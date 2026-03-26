@@ -81,7 +81,7 @@ static bool scevMentionsLoop(const SCEV *Expr, Loop *L) {
     return false;
 }
 
-/// Very coarse notion of "affine enough for first milestone".
+/// Very coarse notion of "affine enough".
 /// Accept constants, unknowns, add recurrences, adds, muls, casts/sext/zext, etc.
 /// Reject div/rem and weird cases indirectly by not matching them well later.
 static bool isAffineLikeSCEV(const SCEV *Expr) {
@@ -135,7 +135,6 @@ static void analyzeLoopRecursive(Loop *L,
                 Info.affine = isAffineLikeSCEV(PtrSCEV);
                 Info.loopVariant = scevMentionsLoop(PtrSCEV, L);
 
-                // First milestone rule:
                 // candidate only if pointer is affine-like and changes with loop iters.
                 if (Info.affine && Info.loopVariant) {
                     Info.prefetchDistance = choosePrefetchDistance(L);

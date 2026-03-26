@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <plugin.so> <input.ll>" >&2
+if [[ $# -lt 3 ]]; then
+  echo "Usage: $0 <plugin.so> <pass-name> <input.ll>" >&2
   exit 1
 fi
 
 PLUGIN="$1"
-INPUT="$2"
+PASS_NAME="$2"
+INPUT="$3"
 
-opt -load-pass-plugin "$PLUGIN" -passes="coalescing-pass" -disable-output "$INPUT" 2>&1
+opt -load-pass-plugin "$PLUGIN" -passes="$PASS_NAME" -disable-output "$INPUT" 2>&1
