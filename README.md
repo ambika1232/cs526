@@ -121,43 +121,10 @@ bash scripts/run_analysis.sh build/libCoalescingPass.so build/strided.ll
 
 ## Example result
 
-For `B[tid] = A[tid * 4]` you should expect something like:
+For `B[tid] = A[tid * 4]` you should expect:
 
 ```text
 [CoalescingPass] function=test
   access=B[tid] thread_dependent=yes stride=1 estimated_transactions=1 class=COALESCED
   access=A[tid*4] thread_dependent=yes stride=4 estimated_transactions=4 class=NON_COALESCED
 ```
-
-## Static transaction model
-
-The estimator uses a simple model:
-
-- warp size = 32
-- segment size = 128 bytes
-- element size = 4 bytes for `float`
-
-For a pattern `A[tid * s]`, approximate bytes spanned by a warp as:
-
-```text
-span_bytes = ((31 * s) + 1) * element_size
-transactions ~= ceil(span_bytes / segment_size)
-```
-
-This is not a hardware-perfect model, but it is suitable for a midterm report because it provides a quantitative comparison before and after transformations.
-
-## Suggested midterm positioning
-
-Since you do not have an NVIDIA GPU, present the project as:
-
-- an LLVM-based **static analysis and optimization framework**, and
-- an **estimated warp-level memory transaction model** for evaluation.
-
-That is enough for a defensible midterm.
-
-## Natural next steps after midterm
-
-- Use `ScalarEvolution` more systematically
-- Rewrite simple strided index forms
-- Add benchmarking on a remote GPU or lab machine later
-- Explore shared-memory staging only as a stretch goal
