@@ -1,0 +1,3 @@
+[CoalescingPass] function=test
+  access=tid thread_dependent=yes stride=1 estimated_transactions=1 class=COALESCED
+  access=tid*4 thread_dependent=yes stride=4 estimated_transactions=4 class=NON_COALESCED
