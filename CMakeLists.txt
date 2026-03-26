@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(CoalescingPass LANGUAGES CXX)
+project(GPUOptimizationPasses LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,8 +20,20 @@ set_target_properties(CoalescingPass PROPERTIES
     COMPILE_FLAGS "-fno-rtti"
 )
 
+add_library(PrefetchPass MODULE
+    src/PrefetchPass.cpp
+)
+
+set_target_properties(PrefetchPass PROPERTIES
+    COMPILE_FLAGS "-fno-rtti"
+)
+
 if(APPLE)
   set_target_properties(CoalescingPass PROPERTIES
+      LINK_FLAGS "-undefined dynamic_lookup"
+  )
+
+  set_target_properties(PrefetchPass PROPERTIES
       LINK_FLAGS "-undefined dynamic_lookup"
   )
 endif()
