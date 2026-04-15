@@ -40,6 +40,123 @@ enum class ThreadVarKind {
   TidY
 };
 
+
+enum class TransformKind {
+  KeepGlobal,      // already good
+  BroadcastReuse,  // invariant across x load
+  TileRemap,       // strided / bad pattern
+  SkipUnknown      // not enough confidence
+};
+
+struct AccessInfo {
+  std::string Kind;
+  std::string BaseName;
+  std::string BaseValueStr;
+  std::string OffsetStr;
+  bool ThreadDependent = false;
+  int64_t StrideXBytes = 0;
+  uint64_t AccessSize = 0;
+  bool Exact = false;
+  bool Contiguous = false;
+  bool Monotonic = false;
+  bool Broadcast = false;
+  std::string ClassName;
+  std::string Suggestion;
+
+  TransformKind Action = TransformKind::SkipUnknown;
+  std::string ActionReason;
+};
+
+static const char *transformKindName(TransformKind K) {
+  switch (K) {
+  case TransformKind::KeepGlobal:     return "KEEP_GLOBAL";
+  case TransformKind::BroadcastReuse: return "BROADCAST_REUSE";
+  case TransformKind::TileRemap:      return "TILE_REMAP";
+  case TransformKind::SkipUnknown:    return "SKIP_UNKNOWN";
+  }
+  return "SKIP_UNKNOWN";
+}
+
+static bool shouldSkipFunction(const Function &F) {
+  if (F.isDeclaration()) return true;
+  // return F.getName().startswith("__clang_ocl_kern_imp_");
+  return F.getName().starts_with("__clang_ocl_kern_imp_");
+}
+
+static const Value *stripPointerCastsAndOffsets(const Value *V) {
+  while (true) {
+    if (auto *BC = dyn_cast<BitCastOperator>(V)) {
+      V = BC->getOperand(0);
+      continue;
+    }
+    if (auto *ASC = dyn_cast<AddrSpaceCastOperator>(V)) {
+      V = ASC->getOperand(0);
+      continue;
+    }
+    if (auto *GEP = dyn_cast<GEPOperator>(V)) {
+      V = GEP->getPointerOperand();
+      continue;
+    }
+    if (auto *I = dyn_cast<Instruction>(V)) {
+      if (auto *BCI = dyn_cast<BitCastInst>(I)) {
+        V = BCI->getOperand(0);
+        continue;
+      }
+      if (auto *ASCI = dyn_cast<AddrSpaceCastInst>(I)) {
+        V = ASCI->getOperand(0);
+        continue;
+      }
+      if (auto *GEPI = dyn_cast<GetElementPtrInst>(I)) {
+        V = GEPI->getPointerOperand();
+        continue;
+      }
+    }
+    break;
+  }
+  return V;
+}
+
+static std::string valueToString(const Value *V) {
+  std::string S;
+  raw_string_ostream OS(S);
+  if (V->hasName()) OS << V->getName();
+  else V->printAsOperand(OS, false);
+  return OS.str();
+}
+
+static std::string getBaseName(const Value *Ptr) {
+  const Value *Base = stripPointerCastsAndOffsets(Ptr);
+  if (auto *A = dyn_cast<Argument>(Base)) {
+    if (A->hasName()) return A->getName().str();
+    return "arg" + std::to_string(A->getArgNo());
+  }
+  return valueToString(Base);
+}
+
+static std::string suggestOptimization(const AccessInfo &AI) {
+  if (AI.ClassName == "INVARIANT_ACROSS_X") {
+    if (AI.Kind == "load")
+      return "candidate: shared-memory/local-memory preload; reuse across x threads";
+    return "candidate: no coalescing issue; check write placement";
+  }
+
+  if (AI.ClassName == "LIKELY_COALESCED") {
+    if (AI.Kind == "load")
+      return "candidate: keep as global coalesced load";
+    return "candidate: keep as coalesced store";
+  }
+
+  if (AI.ThreadDependent && std::llabs(AI.StrideXBytes) > (int64_t)AI.AccessSize)
+    return "candidate: tile/remap through shared memory to enforce contiguous x access";
+
+  if (AI.ThreadDependent && AI.StrideXBytes == 0)
+    return "candidate: broadcast/reuse analysis; consider hoisting or local caching";
+
+  return "candidate: inspect with SCEV for affine decomposition";
+}
+
+} // namespace
+
 struct AffineExpr {
   bool Known = true;
   bool HasUnknownInvariant = false;
@@ -143,6 +260,8 @@ static ThreadVarKind getThreadVarKind(Value *V) {
 }
 
 static bool isInvariantButUnknown(Value *V);
+
+
 
 static std::string formatAffineExpr(const AffineExpr &E) {
   if (!E.Known)
@@ -518,6 +637,73 @@ static AffineExpr buildByteOffsetExpr(GetElementPtrInst *GEP,
   return Total;
 }
 
+static AffineExpr buildByteOffsetExprRecursive(Value *Ptr,
+                                               const DataLayout &DL) {
+  Ptr = stripSimpleCasts(Ptr);
+
+  if (auto *GEP = dyn_cast<GetElementPtrInst>(Ptr)) {
+    AffineExpr Here = buildByteOffsetExpr(GEP, DL);
+    AffineExpr Base = buildByteOffsetExprRecursive(GEP->getPointerOperand(), DL);
+
+    if (!Here.Known || !Base.Known)
+      return invalidExpr();
+
+    return combineAdd(Base, Here);
+  }
+
+  if (auto *GEPOp = dyn_cast<GEPOperator>(Ptr)) {
+    AffineExpr Total = makeConst(0);
+
+    for (auto GTI = gep_type_begin(GEPOp), GTE = gep_type_end(GEPOp);
+         GTI != GTE; ++GTI) {
+      Value *Idx = GTI.getOperand();
+
+      if (StructType *STy = GTI.getStructTypeOrNull()) {
+        int64_t FieldNo = -1;
+        if (!getConstInt(Idx, FieldNo))
+          return invalidExpr();
+
+        if (FieldNo < 0 ||
+            static_cast<unsigned>(FieldNo) >= STy->getNumElements())
+          return invalidExpr();
+
+        const StructLayout *SL = DL.getStructLayout(STy);
+        uint64_t FieldOffset =
+            SL->getElementOffset(static_cast<unsigned>(FieldNo));
+        Total = combineAdd(Total,
+                           makeConst(static_cast<int64_t>(FieldOffset)));
+        continue;
+      }
+
+      Type *IndexedTy = GTI.getIndexedType();
+      if (!IndexedTy)
+        return invalidExpr();
+
+      uint64_t ElemSize = getTypeSizeInBytes(DL, IndexedTy);
+      if (ElemSize == 0)
+        return invalidExpr();
+
+      AffineExpr IdxExpr = parseAffine(Idx);
+      if (!IdxExpr.Known)
+        return invalidExpr();
+
+      Total =
+          combineAdd(Total, scaleExpr(IdxExpr, static_cast<int64_t>(ElemSize)));
+    }
+
+    AffineExpr Base =
+        buildByteOffsetExprRecursive(const_cast<Value *>(GEPOp->getPointerOperand()), DL);
+    if (!Base.Known || !Total.Known)
+      return invalidExpr();
+
+    return combineAdd(Base, Total);
+  }
+
+  // Base pointer argument/global: zero extra offset at this level.
+  return makeConst(0);
+}
+
+
 static bool canEvaluateExactly(const AffineExpr &E) {
   return E.Known && !E.HasUnknownInvariant;
 }
@@ -684,51 +870,249 @@ static void printAccessSummary(StringRef AccessKind, GetElementPtrInst *GEP,
   outs() << "\n";
 }
 
-struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
-    const DataLayout &DL = F.getParent()->getDataLayout();
+static TransformKind chooseTransform(const AccessInfo &AI) {
+  // Stores that are already contiguous should be preserved.
+  if (AI.Kind == "store" && AI.ClassName == "LIKELY_COALESCED")
+    return TransformKind::KeepGlobal;
 
-    outs() << "[CoalescingPass] function=" << F.getName() << "\n";
-
-    for (BasicBlock &BB : F) {
-      for (Instruction &I : BB) {
-        if (auto *LI = dyn_cast<LoadInst>(&I)) {
-          Value *Ptr = LI->getPointerOperand();
-          auto *GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
-          if (!GEP)
-            continue;
-
-          uint64_t AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
-          if (AccessSizeBytes == 0)
-            continue;
-
-          AffineExpr ByteExpr = buildByteOffsetExpr(GEP, DL);
-          printAccessSummary("load", GEP, ByteExpr, AccessSizeBytes);
-
-        } else if (auto *SI = dyn_cast<StoreInst>(&I)) {
-          Value *Ptr = SI->getPointerOperand();
-          auto *GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
-          if (!GEP)
-            continue;
-
-          uint64_t AccessSizeBytes =
-              getTypeSizeInBytes(DL, SI->getValueOperand()->getType());
-          if (AccessSizeBytes == 0)
-            continue;
-
-          AffineExpr ByteExpr = buildByteOffsetExpr(GEP, DL);
-          printAccessSummary("store", GEP, ByteExpr, AccessSizeBytes);
-        }
-      }
-    }
-
-    return PreservedAnalyses::all();
+  // Fully or likely coalesced global accesses are already good.
+  if (AI.ClassName == "FULLY_COALESCED" ||
+      AI.ClassName == "COALESCED_BUT_MISALIGNED" ||
+      AI.ClassName == "PARTIALLY_COALESCED" ||
+      AI.ClassName == "LIKELY_COALESCED") {
+    return TransformKind::KeepGlobal;
   }
 
-  static bool isRequired() { return true; }
+  // Invariant loads are better handled by reuse/broadcast staging.
+  if (AI.Kind == "load" &&
+      (AI.ClassName == "INVARIANT_ACROSS_X" ||
+       AI.ClassName == "THREAD_INVARIANT" ||
+       AI.Broadcast)) {
+    return TransformKind::BroadcastReuse;
+  }
+
+  // Large stride across x is the classic coalescing-rewrite target.
+  if (AI.ThreadDependent &&
+      AI.AccessSize > 0 &&
+      std::llabs(AI.StrideXBytes) > static_cast<int64_t>(AI.AccessSize)) {
+    return TransformKind::TileRemap;
+  }
+
+  // If it is thread-dependent but not contiguous, prefer remap.
+  if (AI.ThreadDependent && !AI.Contiguous)
+    return TransformKind::TileRemap;
+
+  return TransformKind::SkipUnknown;
+}
+
+static std::string explainTransformChoice(const AccessInfo &AI) {
+  switch (chooseTransform(AI)) {
+  case TransformKind::KeepGlobal:
+    return "access already varies contiguously across tid_x; preserve direct global access";
+  case TransformKind::BroadcastReuse:
+    return "access is invariant/broadcast across tid_x; stage once and reuse across x threads";
+  case TransformKind::TileRemap:
+    return "access is thread-dependent but non-contiguous/strided; rewrite through cooperative tiled load";
+  case TransformKind::SkipUnknown:
+    return "insufficient confidence for a safe profitability-guided rewrite";
+  }
+  return "insufficient confidence for a safe profitability-guided rewrite";
+}
+
+
+static void dumpIndexDef(Value *V) {
+  V = stripSimpleCasts(V);
+
+  outs() << "      idx_root=";
+  V->printAsOperand(outs(), false);
+  outs() << "\n";
+
+  if (auto *I = dyn_cast<Instruction>(V)) {
+    outs() << "      idx_opcode=" << I->getOpcodeName() << "\n";
+
+    unsigned OpNo = 0;
+    for (Value *Op : I->operands()) {
+      outs() << "        op" << OpNo++ << "=";
+      Op->printAsOperand(outs(), false);
+
+      AffineExpr E = parseAffine(Op);
+      outs() << " affine=" << formatAffineExpr(E);
+
+      ThreadVarKind TV = getThreadVarKind(Op);
+      if (TV == ThreadVarKind::TidX) outs() << " kind=tid_x";
+      else if (TV == ThreadVarKind::TidY) outs() << " kind=tid_y";
+      else outs() << " kind=other";
+
+      int64_t C = 0;
+      if (getConstInt(Op, C))
+        outs() << " const=" << C;
+
+      outs() << "\n";
+    }
+  }
+}
+
+
+struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
+  if (shouldSkipFunction(F))
+    return PreservedAnalyses::all();
+
+  const DataLayout &DL = F.getParent()->getDataLayout();
+  std::vector<AccessInfo> Accesses;
+
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
+      Value *Ptr = nullptr;
+      GetElementPtrInst *GEP = nullptr;
+      uint64_t AccessSizeBytes = 0;
+      std::string Kind;
+
+      if (auto *LI = dyn_cast<LoadInst>(&I)) {
+        Ptr = LI->getPointerOperand();
+        GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+        if (!GEP)
+          continue;
+
+        AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
+        if (AccessSizeBytes == 0)
+          continue;
+
+        Kind = "load";
+      } else if (auto *SI = dyn_cast<StoreInst>(&I)) {
+        Ptr = SI->getPointerOperand();
+        GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+        if (!GEP)
+          continue;
+
+        AccessSizeBytes =
+            getTypeSizeInBytes(DL, SI->getValueOperand()->getType());
+        if (AccessSizeBytes == 0)
+          continue;
+
+        Kind = "store";
+      } else {
+        continue;
+      }
+
+      // Optional debugging
+      outs() << "    RAW PTR: ";
+      Ptr->printAsOperand(outs(), false);
+      outs() << "\n";
+
+      Value *Stripped = stripSimpleCasts(Ptr);
+      outs() << "    STRIPPED PTR: ";
+      Stripped->printAsOperand(outs(), false);
+      outs() << "\n";
+
+      if (GEP) {
+        outs() << "    GEP PTR OPERAND: ";
+        GEP->getPointerOperand()->printAsOperand(outs(), false);
+        outs() << "\n";
+
+        outs() << "    GEP INDICES:\n";
+        unsigned IdxNo = 0;
+        for (Value *Idx : GEP->indices()) {
+          outs() << "      idx" << IdxNo++ << "=";
+          Idx->printAsOperand(outs(), false);
+
+          AffineExpr IdxExpr = parseAffine(Idx);
+          outs() << " affine=" << formatAffineExpr(IdxExpr);
+
+          ThreadVarKind TV = getThreadVarKind(Idx);
+          if (TV == ThreadVarKind::TidX)
+            outs() << " kind=tid_x";
+          else if (TV == ThreadVarKind::TidY)
+            outs() << " kind=tid_y";
+          else
+            outs() << " kind=other";
+
+          int64_t C = 0;
+          if (getConstInt(Idx, C))
+            outs() << " const=" << C;
+
+          outs() << "\n";
+
+          dumpIndexDef(Idx);
+        }
+      }
+
+      AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
+      WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
+      std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
+
+      AccessInfo AI;
+      AI.Kind = Kind;
+      AI.BaseValueStr = valueToString(Ptr);
+      AI.BaseName = getBaseName(Ptr);
+      AI.OffsetStr = formatAffineExpr(ByteExpr);
+      AI.ThreadDependent = ByteExpr.dependsOnThreads();
+      AI.StrideXBytes = computeStrideXBytes(ByteExpr);
+      AI.AccessSize = AccessSizeBytes;
+      AI.Exact = WI.Exact;
+      AI.Contiguous = WI.Contiguous;
+      AI.Monotonic = WI.Monotonic;
+      AI.Broadcast = WI.Broadcast;
+      AI.ClassName = ClassName;
+      AI.Suggestion = suggestOptimization(AI);
+
+      AI.Action = chooseTransform(AI);
+      AI.ActionReason = explainTransformChoice(AI);
+
+      Accesses.push_back(std::move(AI));
+    }
+  }
+
+  outs() << "[CoalescingPass] function=" << F.getName() << "\n";
+
+  unsigned KeepCount = 0, BroadcastCount = 0, TileCount = 0, SkipCount = 0;
+
+  for (const auto &AI : Accesses) {
+    outs() << "  access=" << AI.Kind
+           << " base=" << AI.BaseName
+           << " byte_offset=" << AI.OffsetStr
+           << " thread_dependent=" << (AI.ThreadDependent ? "yes" : "no")
+           << " stride_x_bytes=" << AI.StrideXBytes
+           << " access_size=" << AI.AccessSize
+           << " exact=" << (AI.Exact ? "yes" : "no")
+           << " contiguous=" << (AI.Contiguous ? "yes" : "no")
+           << " monotonic=" << (AI.Monotonic ? "yes" : "no")
+           << " broadcast=" << (AI.Broadcast ? "yes" : "no")
+           << " class=" << AI.ClassName
+           << "\n";
+
+    outs() << "    " << AI.Suggestion << "\n";
+    outs() << "    action=" << transformKindName(AI.Action) << "\n";
+    outs() << "    reason=" << AI.ActionReason << "\n";
+
+    switch (AI.Action) {
+    case TransformKind::KeepGlobal:
+      ++KeepCount;
+      break;
+    case TransformKind::BroadcastReuse:
+      ++BroadcastCount;
+      break;
+    case TransformKind::TileRemap:
+      ++TileCount;
+      break;
+    case TransformKind::SkipUnknown:
+      ++SkipCount;
+      break;
+    }
+  }
+
+  outs() << "  summary:"
+         << " keep=" << KeepCount
+         << " broadcast_reuse=" << BroadcastCount
+         << " tile_remap=" << TileCount
+         << " skip=" << SkipCount
+         << "\n";
+
+  return PreservedAnalyses::all();
+}
 };
 
-} // namespace
+
 
 extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
