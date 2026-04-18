@@ -8,7 +8,7 @@
 
 
 #include "llvm/Passes/PassBuilder.h"
-#include "llvm/Plugins/PassPlugin.h"
+#include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/IR/InstrTypes.h"
