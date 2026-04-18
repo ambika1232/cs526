@@ -23,12 +23,9 @@
 #include <vector>
 
 
-#include <algorithm>
-#include <cstdint>
-#include <cstdlib>
-#include <set>
-#include <string>
-#include <vector>
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/IR/InstIterator.h"
 
 using namespace llvm;
 
@@ -39,6 +36,55 @@ enum class ThreadVarKind {
   TidX,
   TidY
 };
+
+struct LoadKey {
+  const Value *Ptr = nullptr;
+  Type *Ty = nullptr;
+
+  bool operator==(const LoadKey &Other) const {
+    return Ptr == Other.Ptr && Ty == Other.Ty;
+  }
+};
+
+
+template <>
+struct DenseMapInfo<LoadKey> {
+  static inline LoadKey getEmptyKey() {
+    return {DenseMapInfo<const Value *>::getEmptyKey(),
+            DenseMapInfo<Type *>::getEmptyKey()};
+  }
+
+  static inline LoadKey getTombstoneKey() {
+    return {DenseMapInfo<const Value *>::getTombstoneKey(),
+            DenseMapInfo<Type *>::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const LoadKey &K) {
+    return hash_combine(K.Ptr, K.Ty);
+  }
+
+  static bool isEqual(const LoadKey &LHS, const LoadKey &RHS) {
+    return LHS == RHS;
+  }
+};
+
+static std::string classifyLoadForRewrite(LoadInst *LI, const DataLayout &DL) {
+  if (!LI)
+    return "UNKNOWN";
+
+  Value *Ptr = LI->getPointerOperand();
+  auto *GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+  if (!GEP)
+    return "UNKNOWN";
+
+  uint64_t AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
+  if (AccessSizeBytes == 0)
+    return "UNKNOWN";
+
+  AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
+  WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
+  return classifyAccess(ByteExpr, AccessSizeBytes, WI);
+}
 
 
 enum class TransformKind {
@@ -1190,6 +1236,75 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
 }
 };
 
+struct CoalescingRewritePass : public PassInfoMixin<CoalescingRewritePass> {
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
+    if (shouldSkipFunction(F))
+      return PreservedAnalyses::all();
+
+    const DataLayout &DL = F.getParent()->getDataLayout();
+    bool Changed = false;
+
+    errs() << "ENTER rewrite run: " << F.getName() << "\n";
+
+    for (BasicBlock &BB : F) {
+      DenseMap<LoadKey, LoadInst *> AvailableInvariantLoads;
+      SmallVector<Instruction *, 8> ToErase;
+
+      for (Instruction &I : BB) {
+        auto *LI = dyn_cast<LoadInst>(&I);
+        if (!LI)
+          continue;
+
+        if (LI->isVolatile() || LI->isAtomic())
+          continue;
+
+        std::string ClassName = classifyLoadForRewrite(LI, DL);
+
+        // Only rewrite the easy/safe subset for now.
+        bool Reusable =
+            (ClassName == "INVARIANT_ACROSS_X" ||
+             ClassName == "THREAD_INVARIANT");
+
+        if (!Reusable) {
+          // For now, do not rewrite STRIDED / TILE_REMAP cases.
+          continue;
+        }
+
+        Value *Ptr = LI->getPointerOperand();
+        LoadKey K{Ptr, LI->getType()};
+
+        auto It = AvailableInvariantLoads.find(K);
+        if (It != AvailableInvariantLoads.end()) {
+          LoadInst *Prev = It->second;
+
+          // Be conservative: only fold exact same type and pointer.
+          if (Prev && Prev->getParent() == &BB &&
+              Prev->getType() == LI->getType()) {
+            outs() << "[CoalescingRewritePass] reuse invariant load in function="
+                   << F.getName()
+                   << " bb=";
+            BB.printAsOperand(outs(), false);
+            outs() << " ptr=";
+            Ptr->printAsOperand(outs(), false);
+            outs() << " class=" << ClassName << "\n";
+
+            LI->replaceAllUsesWith(Prev);
+            ToErase.push_back(LI);
+            Changed = true;
+            continue;
+          }
+        }
+
+        AvailableInvariantLoads[K] = LI;
+      }
+
+      for (Instruction *Dead : ToErase)
+        Dead->eraseFromParent();
+    }
+
+    return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+  }
+};
 
 
 extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo
@@ -1213,4 +1328,31 @@ llvmGetPassPluginInfo() {
               return false;
             });
       }};
+
+      PB.registerPipelineParsingCallback(
+    [](StringRef Name, FunctionPassManager &FPM,
+       ArrayRef<PassBuilder::PipelineElement>) {
+      errs() << "PIPELINE NAME: " << Name << "\n";
+
+      if (Name == "coalescing-pass") {
+        errs() << "ADDING CoalescingPass\n";
+        FPM.addPass(CoalescingPass());
+        return true;
+      }
+
+      if (Name == "coalescing-rewrite-pass") {
+        errs() << "ADDING CoalescingRewritePass\n";
+        FPM.addPass(CoalescingRewritePass());
+        return true;
+      }
+
+      if (Name == "coalescing-pipeline") {
+        errs() << "ADDING CoalescingPass + CoalescingRewritePass\n";
+        FPM.addPass(CoalescingPass());
+        FPM.addPass(CoalescingRewritePass());
+        return true;
+      }
+
+      return false;
+    });
 }
