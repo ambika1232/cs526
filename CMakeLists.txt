@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(CoalescingPass LANGUAGES CXX)
+project(CoalescingPass LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,7 +16,6 @@ include(AddLLVM)
 
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
-include_directories("/opt/homebrew/Cellar/llvm/22.1.2/include/llvm/Plugins")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_llvm_pass_plugin(CoalescingPass
