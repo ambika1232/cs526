@@ -37,15 +37,6 @@ enum class ThreadVarKind {
   TidY
 };
 
-struct LoadKey {
-  const Value *Ptr = nullptr;
-  Type *Ty = nullptr;
-
-  bool operator==(const LoadKey &Other) const {
-    return Ptr == Other.Ptr && Ty == Other.Ty;
-  }
-};
-
 
 template <>
 struct DenseMapInfo<LoadKey> {
@@ -68,23 +59,6 @@ struct DenseMapInfo<LoadKey> {
   }
 };
 
-static std::string classifyLoadForRewrite(LoadInst *LI, const DataLayout &DL) {
-  if (!LI)
-    return "UNKNOWN";
-
-  Value *Ptr = LI->getPointerOperand();
-  auto *GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
-  if (!GEP)
-    return "UNKNOWN";
-
-  uint64_t AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
-  if (AccessSizeBytes == 0)
-    return "UNKNOWN";
-
-  AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
-  WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
-  return classifyAccess(ByteExpr, AccessSizeBytes, WI);
-}
 
 
 enum class TransformKind {
@@ -1067,6 +1041,25 @@ static void dumpIndexDef(Value *V) {
 }
 
 
+static std::string classifyLoadForRewrite(LoadInst *LI, const DataLayout &DL) {
+  if (!LI)
+    return "UNKNOWN";
+
+  Value *Ptr = LI->getPointerOperand();
+  auto *GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+  if (!GEP)
+    return "UNKNOWN";
+
+  uint64_t AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
+  if (AccessSizeBytes == 0)
+    return "UNKNOWN";
+
+  AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
+  WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
+  return classifyAccess(ByteExpr, AccessSizeBytes, WI);
+}
+
+
 struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
 
@@ -1247,7 +1240,7 @@ struct CoalescingRewritePass : public PassInfoMixin<CoalescingRewritePass> {
     errs() << "ENTER rewrite run: " << F.getName() << "\n";
 
     for (BasicBlock &BB : F) {
-      DenseMap<LoadKey, LoadInst *> AvailableInvariantLoads;
+      DenseMap<std::pair<Value *, Type *>, LoadInst *> AvailableInvariantLoads;
       SmallVector<Instruction *, 8> ToErase;
 
       for (Instruction &I : BB) {
@@ -1271,7 +1264,7 @@ struct CoalescingRewritePass : public PassInfoMixin<CoalescingRewritePass> {
         }
 
         Value *Ptr = LI->getPointerOperand();
-        LoadKey K{Ptr, LI->getType()};
+        auto K = std::make_pair(Ptr, LI->getType());
 
         auto It = AvailableInvariantLoads.find(K);
         if (It != AvailableInvariantLoads.end()) {
@@ -1309,7 +1302,7 @@ struct CoalescingRewritePass : public PassInfoMixin<CoalescingRewritePass> {
 
 extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
-   errs() << "PLUGIN ENTRY LOADED\n";
+  errs() << "PLUGIN ENTRY LOADED\n";
   return {
       LLVM_PLUGIN_API_VERSION,
       "CoalescingPass",
@@ -1319,40 +1312,29 @@ llvmGetPassPluginInfo() {
         PB.registerPipelineParsingCallback(
             [](StringRef Name, FunctionPassManager &FPM,
                ArrayRef<PassBuilder::PipelineElement>) {
-                errs() << "PIPELINE NAME: " << Name << "\n";
+
+              errs() << "PIPELINE NAME: " << Name << "\n";
+
               if (Name == "coalescing-pass") {
                 errs() << "ADDING CoalescingPass\n";
                 FPM.addPass(CoalescingPass());
                 return true;
               }
+
+              if (Name == "coalescing-rewrite-pass") {
+                errs() << "ADDING CoalescingRewritePass\n";
+                FPM.addPass(CoalescingRewritePass());
+                return true;
+              }
+
+              if (Name == "coalescing-pipeline") {
+                errs() << "ADDING CoalescingPass + CoalescingRewritePass\n";
+                FPM.addPass(CoalescingPass());
+                FPM.addPass(CoalescingRewritePass());
+                return true;
+              }
+
               return false;
             });
       }};
-
-      PB.registerPipelineParsingCallback(
-    [](StringRef Name, FunctionPassManager &FPM,
-       ArrayRef<PassBuilder::PipelineElement>) {
-      errs() << "PIPELINE NAME: " << Name << "\n";
-
-      if (Name == "coalescing-pass") {
-        errs() << "ADDING CoalescingPass\n";
-        FPM.addPass(CoalescingPass());
-        return true;
-      }
-
-      if (Name == "coalescing-rewrite-pass") {
-        errs() << "ADDING CoalescingRewritePass\n";
-        FPM.addPass(CoalescingRewritePass());
-        return true;
-      }
-
-      if (Name == "coalescing-pipeline") {
-        errs() << "ADDING CoalescingPass + CoalescingRewritePass\n";
-        FPM.addPass(CoalescingPass());
-        FPM.addPass(CoalescingRewritePass());
-        return true;
-      }
-
-      return false;
-    });
 }
