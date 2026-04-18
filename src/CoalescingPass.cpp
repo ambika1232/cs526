@@ -230,8 +230,47 @@ static bool getConstInt(Value *V, int64_t &C) {
   return false;
 }
 
+static Value *resolveAllocaStoredValue(Value *V) {
+  V = stripSimpleCasts(V);
+
+  auto *LI = dyn_cast<LoadInst>(V);
+  if (!LI)
+    return V;
+
+  Value *Ptr = LI->getPointerOperand();
+  Ptr = stripSimpleCasts(Ptr);
+
+  auto *AI = dyn_cast<AllocaInst>(Ptr);
+  if (!AI)
+    return V;
+
+  Value *Stored = nullptr;
+
+  for (User *U : AI->users()) {
+    auto *SI = dyn_cast<StoreInst>(U);
+    if (!SI)
+      continue;
+
+    if (SI->getPointerOperand() != AI)
+      continue;
+
+    if (Stored)
+      return V; // multiple stores, give up conservatively
+
+    Stored = SI->getValueOperand();
+  }
+
+  if (!Stored)
+    return V;
+
+  return stripSimpleCasts(Stored);
+}
+
+
 static ThreadVarKind getThreadVarKind(Value *V) {
   V = stripSimpleCasts(V);
+
+  V = resolveAllocaStoredValue(V);
 
   auto *CB = dyn_cast<CallBase>(V);
   if (!CB)
@@ -454,6 +493,8 @@ static bool isInvariantButUnknown(Value *V) {
 
 static AffineExpr parseAffine(Value *V) {
   V = stripSimpleCasts(V);
+  V = resolveAllocaStoredValue(V);
+
 
   switch (getThreadVarKind(V)) {
   case ThreadVarKind::TidX:
@@ -492,8 +533,10 @@ static AffineExpr parseAffine(Value *V) {
     }
 
     if (isInvariantButUnknown(V))
+     { V = stripSimpleCasts(V);
+      V = resolveAllocaStoredValue(V);
       return makeUnknownInvariant();
-
+}
     return invalidExpr();
   }
 
