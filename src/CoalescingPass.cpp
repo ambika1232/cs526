@@ -140,13 +140,17 @@ static std::string suggestOptimization(const AccessInfo &AI) {
     return "candidate: no coalescing issue; check write placement";
   }
 
-  if (AI.ClassName == "LIKELY_COALESCED") {
+  if (AI.ClassName == "FULLY_COALESCED" ||
+      AI.ClassName == "COALESCED_BUT_MISALIGNED" ||
+      AI.ClassName == "PARTIALLY_COALESCED" ||
+      AI.ClassName == "LIKELY_COALESCED") {
     if (AI.Kind == "load")
       return "candidate: keep as global coalesced load";
     return "candidate: keep as coalesced store";
   }
 
-  if (AI.ThreadDependent && std::llabs(AI.StrideXBytes) > (int64_t)AI.AccessSize)
+  if (AI.ThreadDependent &&
+      std::llabs(AI.StrideXBytes) > static_cast<int64_t>(AI.AccessSize))
     return "candidate: tile/remap through shared memory to enforce contiguous x access";
 
   if (AI.ThreadDependent && AI.StrideXBytes == 0)
@@ -300,7 +304,25 @@ static ThreadVarKind getThreadVarKind(Value *V) {
 
 static bool isInvariantButUnknown(Value *V);
 
+static const char *affineThreadKindName(const AffineExpr &E) {
+  if (!E.Known)
+    return "unknown";
 
+  bool HasX = (E.CoeffTidX != 0);
+  bool HasY = (E.CoeffTidY != 0);
+
+  if (HasX && !HasY)
+    return "affine_tid_x";
+  if (!HasX && HasY)
+    return "affine_tid_y";
+  if (HasX && HasY)
+    return "affine_tid_xy";
+
+  if (E.HasUnknownInvariant)
+    return "invariant_sym";
+
+  return "other";
+}
 
 static std::string formatAffineExpr(const AffineExpr &E) {
   if (!E.Known)
@@ -982,9 +1004,12 @@ static void dumpIndexDef(Value *V) {
       outs() << " affine=" << formatAffineExpr(E);
 
       ThreadVarKind TV = getThreadVarKind(Op);
-      if (TV == ThreadVarKind::TidX) outs() << " kind=tid_x";
-      else if (TV == ThreadVarKind::TidY) outs() << " kind=tid_y";
-      else outs() << " kind=other";
+      if (TV == ThreadVarKind::TidX)
+        outs() << " kind=tid_x";
+      else if (TV == ThreadVarKind::TidY)
+        outs() << " kind=tid_y";
+      else
+        outs() << " kind=" << affineThreadKindName(E);
 
       int64_t C = 0;
       if (getConstInt(Op, C))
@@ -1007,6 +1032,9 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
   }
   // if (shouldSkipFunction(F))
   //   return PreservedAnalyses::all();
+
+ 
+      
 
   const DataLayout &DL = F.getParent()->getDataLayout();
   std::vector<AccessInfo> Accesses;
@@ -1075,7 +1103,7 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
           else if (TV == ThreadVarKind::TidY)
             outs() << " kind=tid_y";
           else
-            outs() << " kind=other";
+            outs() << " kind=" << affineThreadKindName(IdxExpr);
 
           int64_t C = 0;
           if (getConstInt(Idx, C))
