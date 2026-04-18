@@ -38,28 +38,6 @@ enum class ThreadVarKind {
 };
 
 
-template <>
-struct DenseMapInfo<LoadKey> {
-  static inline LoadKey getEmptyKey() {
-    return {DenseMapInfo<const Value *>::getEmptyKey(),
-            DenseMapInfo<Type *>::getEmptyKey()};
-  }
-
-  static inline LoadKey getTombstoneKey() {
-    return {DenseMapInfo<const Value *>::getTombstoneKey(),
-            DenseMapInfo<Type *>::getTombstoneKey()};
-  }
-
-  static unsigned getHashValue(const LoadKey &K) {
-    return hash_combine(K.Ptr, K.Ty);
-  }
-
-  static bool isEqual(const LoadKey &LHS, const LoadKey &RHS) {
-    return LHS == RHS;
-  }
-};
-
-
 
 enum class TransformKind {
   KeepGlobal,      // already good
