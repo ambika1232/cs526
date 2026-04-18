@@ -955,8 +955,15 @@ static void dumpIndexDef(Value *V) {
 
 struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
-  if (shouldSkipFunction(F))
+
+    errs() << "ENTER run: " << F.getName() << "\n";
+
+  if (shouldSkipFunction(F)) {
+    errs() << "SKIP function: " << F.getName() << "\n";
     return PreservedAnalyses::all();
+  }
+  // if (shouldSkipFunction(F))
+  //   return PreservedAnalyses::all();
 
   const DataLayout &DL = F.getParent()->getDataLayout();
   std::vector<AccessInfo> Accesses;
@@ -1116,15 +1123,19 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
 
 extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
+   errs() << "PLUGIN ENTRY LOADED\n";
   return {
       LLVM_PLUGIN_API_VERSION,
       "CoalescingPass",
       LLVM_VERSION_STRING,
       [](PassBuilder &PB) {
+        errs() << "REGISTERING CALLBACK\n";
         PB.registerPipelineParsingCallback(
             [](StringRef Name, FunctionPassManager &FPM,
                ArrayRef<PassBuilder::PipelineElement>) {
+                errs() << "PIPELINE NAME: " << Name << "\n";
               if (Name == "coalescing-pass") {
+                errs() << "ADDING CoalescingPass\n";
                 FPM.addPass(CoalescingPass());
                 return true;
               }
