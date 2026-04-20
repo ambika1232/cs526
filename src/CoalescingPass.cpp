@@ -1402,10 +1402,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       BasicBlock *ContBB = OrigBB->splitBasicBlock(LI, "tile.cont");
       LLVMContext &Ctx = F.getContext();
 
-      // Remove auto branch created by splitBasicBlock.
-      Instruction *OldTerm = OrigBB->getTerminator();
-      OldTerm->eraseFromParent();
-
       // Preload loop blocks.
       BasicBlock *HeaderBB =
           BasicBlock::Create(Ctx, "tile.preload.header", &F, ContBB);
@@ -1414,7 +1410,10 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       BasicBlock *ExitBB =
           BasicBlock::Create(Ctx, "tile.preload.exit", &F, ContBB);
 
+      // Replace the auto branch created by splitBasicBlock.
+      OrigBB->getTerminator()->eraseFromParent();
       IRBuilder<> BOrig(OrigBB);
+      
 
       Value *Lid0 = createGetLocalId0(BOrig, *M);
       Value *LSize0 = createGetLocalSize0(BOrig, *M);
@@ -1465,7 +1464,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           "tile.out.local",
           InsertPt);
 
-      // Branch to preload loop.
+      // // Branch to preload loop.
+      // BOrig.CreateBr(HeaderBB);
       BOrig.CreateBr(HeaderBB);
 
       // Preload header: for (off = lid; off < validTileElems; off += lsize)
