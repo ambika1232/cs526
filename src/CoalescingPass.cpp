@@ -1413,7 +1413,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       // Replace the auto branch created by splitBasicBlock.
       OrigBB->getTerminator()->eraseFromParent();
       IRBuilder<> BOrig(OrigBB);
-      
 
       Value *Lid0 = createGetLocalId0(BOrig, *M);
       Value *LSize0 = createGetLocalSize0(BOrig, *M);
@@ -1549,24 +1548,26 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       Instruction *ContTerm = ContBB->getTerminator();
       if (ContTerm)
         ContTerm->eraseFromParent();
+
       IRBuilder<> BContTerm(ContBB);
       BContTerm.CreateBr(WHeaderBB);
 
       // Output global base: (gid - lid) + store_const
+      // Writeback header: for (woff = lid; woff < lsize; woff += lsize)
+      IRBuilder<> BWHeader(WHeaderBB);
+
+      PHINode *WOff = BWHeader.CreatePHI(BWHeader.getInt64Ty(), 2, "woff");
+      WOff->addIncoming(Lid0, ContBB);
+
       Value *OutBase = nullptr;
       if (FoundStore)
       {
-        IRBuilder<> BWPre(WHeaderBB);
-        OutBase = BWPre.CreateAdd(
-            BWPre.CreateSub(Gid0, Lid0, "out.group.base"),
-            ConstantInt::get(BWPre.getInt64Ty(), StoreMatch.ConstElems),
+        OutBase = BWHeader.CreateAdd(
+            BWHeader.CreateSub(Gid0, Lid0, "out.group.base"),
+            ConstantInt::get(BWHeader.getInt64Ty(), StoreMatch.ConstElems),
             "out.base");
       }
 
-      // Writeback header: for (woff = lid; woff < lsize; woff += lsize)
-      IRBuilder<> BWHeader(WHeaderBB);
-      PHINode *WOff = BWHeader.CreatePHI(BWHeader.getInt64Ty(), 2, "woff");
-      WOff->addIncoming(Lid0, ContBB);
       Value *WCond = BWHeader.CreateICmpULT(WOff, LSize0, "write.cond");
       BWHeader.CreateCondBr(WCond, WBodyBB, WExitBB);
 
