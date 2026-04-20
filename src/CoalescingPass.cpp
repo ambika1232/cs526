@@ -1293,6 +1293,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
       // shared index = stride * lid
       // In ContBB, replace original global load with shared load.
       // Reuse Lid0 from OrigBB; it dominates ContBB.
+      // In ContBB, replace original global load with shared load.
+      // Reuse Lid0 from OrigBB; it dominates ContBB.
       IRBuilder<> BCont(&*ContBB->getFirstInsertionPt());
 
       Value *SharedIdx = BCont.CreateMul(
@@ -1300,53 +1302,22 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
           ConstantInt::get(BCont.getInt64Ty(), Match.StrideElems),
           "shared.idx");
 
-      // Guard: shared.idx must be within the valid preloaded span.
       Value *SharedInBounds =
           BCont.CreateICmpULT(SharedIdx, ValidTileElems, "shared.in.bounds");
 
-      // Split tile.cont into guarded read / fallback path.
-      Instruction *SplitPt = &*BCont.GetInsertPoint();
-      BasicBlock *SharedLoadBB = ContBB->splitBasicBlock(SplitPt, "tile.shared.load");
-      BasicBlock *FallbackBB =
-          BasicBlock::Create(Ctx, "tile.fallback.load", &F, SharedLoadBB);
+      Value *SafeIdx = BCont.CreateSelect(
+          SharedInBounds,
+          SharedIdx,
+          ConstantInt::get(BCont.getInt64Ty(), 0),
+          "shared.safe.idx");
 
-      // Remove auto branch created by split.
-      ContBB->getTerminator()->eraseFromParent();
-
-      // Branch on the bounds check.
-      IRBuilder<> BContTerm(ContBB);
-      BContTerm.CreateCondBr(SharedInBounds, SharedLoadBB, FallbackBB);
-
-      // Shared path: load from shared tile.
-      IRBuilder<> BShared(&*SharedLoadBB->getFirstInsertionPt());
       Value *SharedPtr =
-          BShared.CreateGEP(Match.ElemTy, Tile, SharedIdx, "shared.ptr");
+          BCont.CreateGEP(Match.ElemTy, Tile, SafeIdx, "shared.ptr");
+
       LoadInst *SharedLoad =
-          BShared.CreateLoad(Match.ElemTy, SharedPtr, "shared.load");
+          BCont.CreateLoad(Match.ElemTy, SharedPtr, "shared.load");
 
-      // Fallback path: if somehow out of bounds, use original global load shape.
-      // This should not happen for the restricted pattern, but keeps the IR safe.
-      IRBuilder<> BFallback(FallbackBB);
-      Value *FallbackIdx = BFallback.CreateAdd(
-          BFallback.CreateMul(Gid0,
-                              ConstantInt::get(BFallback.getInt64Ty(),
-                                              Match.StrideElems),
-                              "fallback.mul"),
-          ConstantInt::get(BFallback.getInt64Ty(), Match.ConstElems),
-          "fallback.idx");
-      Value *FallbackPtr =
-          BFallback.CreateGEP(Match.ElemTy, Match.BasePtr, FallbackIdx, "fallback.ptr");
-      LoadInst *FallbackLoad =
-          BFallback.CreateLoad(Match.ElemTy, FallbackPtr, "fallback.load");
-      BFallback.CreateBr(SharedLoadBB);
-
-      // Merge the loaded value with a PHI at top of SharedLoadBB.
-      PHINode *ChosenLoad = PHINode::Create(Match.ElemTy, 2, "tile.chosen", &*SharedLoadBB->begin());
-      ChosenLoad->addIncoming(FallbackLoad, FallbackBB);
-      ChosenLoad->addIncoming(SharedLoad, ContBB);
-
-      // Replace uses of the original load.
-      LI->replaceAllUsesWith(ChosenLoad);
+      LI->replaceAllUsesWith(SharedLoad);
       LI->eraseFromParent();
 
       outs() << "[TileRemapPass] remapped strided load in function="
