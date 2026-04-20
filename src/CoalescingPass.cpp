@@ -1184,7 +1184,9 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
       LLVMContext &Ctx = F.getContext();
 
       // Remove the auto-created unconditional branch from OrigBB to ContBB.
-      OrigBB->getTerminator()->eraseFromParent();
+      // OrigBB->getTerminator()->eraseFromParent();
+      Instruction *OldTerm = OrigBB->getTerminator();
+      OldTerm->eraseFromParent();
 
       // Create preload loop blocks.
       BasicBlock *HeaderBB =
@@ -1194,7 +1196,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
       BasicBlock *ExitBB =
           BasicBlock::Create(Ctx, "tile.preload.exit", &F, ContBB);
 
-      IRBuilder<> EntryBuilder(&*F.getEntryBlock().getFirstInsertionPt());
+      // IRBuilder<> EntryBuilder(&*F.getEntryBlock().getFirstInsertionPt());
+      IRBuilder<> BOrig(OrigBB);
 
       // local_id, local_size, global_id
       Value *Lid0   = createGetLocalId0(EntryBuilder, *M);
@@ -1228,9 +1231,13 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
 
       // Allocate local/shared tile in addrspace(3).
       // This uses OpenCL local memory in SPIR.
-      AllocaInst *Tile = EntryBuilder.CreateAlloca(
-          Match.ElemTy, 3, TileElems, "tile.local");
-
+      AllocaInst *Tile = new AllocaInst(
+        Match.ElemTy,
+        3,                  // addrspace(3) = local/shared
+        TileElems,
+        Align(4),
+        "tile.local",
+        &*F.getEntryBlock().getFirstInsertionPt());
       // OrigBB now branches to preload loop header.
       IRBuilder<> BOrig(OrigBB);
       BOrig.CreateBr(HeaderBB);
@@ -1252,7 +1259,14 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
                                          GlobalIdx, "global.ptr");
       LoadInst *Loaded = BBody.CreateLoad(Match.ElemTy, GlobalPtr, "tile.ld");
 
-      Value *TilePtr = BBody.CreateGEP(Match.ElemTy, Tile, OffPhi, "tile.ptr");
+      // Value *TilePtr = BBody.CreateGEP(Match.ElemTy, Tile, OffPhi, "tile.ptr");
+      auto *TilePtrBase = Tile;
+      Value *TilePtr = BBody.CreateGEP(
+          Match.ElemTy,
+          TilePtrBase,
+          OffPhi,
+          "tile.ptr");
+
       BBody.CreateStore(Loaded, TilePtr);
 
       Value *NextOff = BBody.CreateAdd(OffPhi, LSize0, "off.next");
