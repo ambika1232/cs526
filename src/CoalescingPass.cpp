@@ -1402,11 +1402,11 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       BasicBlock *ContBB = OrigBB->splitBasicBlock(LI, "tile.cont");
       LLVMContext &Ctx = F.getContext();
 
-      // Remove the auto-created unconditional branch from OrigBB to ContBB.
+      // Remove auto branch created by splitBasicBlock.
       Instruction *OldTerm = OrigBB->getTerminator();
       OldTerm->eraseFromParent();
 
-      // Create preload loop blocks.
+      // Preload loop blocks.
       BasicBlock *HeaderBB =
           BasicBlock::Create(Ctx, "tile.preload.header", &F, ContBB);
       BasicBlock *BodyBB =
@@ -1416,7 +1416,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 
       IRBuilder<> BOrig(OrigBB);
 
-      // local_id, local_size, global_id
       Value *Lid0 = createGetLocalId0(BOrig, *M);
       Value *LSize0 = createGetLocalSize0(BOrig, *M);
       Value *Gid0 = createGetGlobalId0(BOrig, *M);
@@ -1446,7 +1445,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           ConstantInt::get(BOrig.getInt64Ty(), 1),
           "valid.tile.elems");
 
-      // Fixed allocation size kept in entry to avoid dominance issues.
+      // Fixed allocation size in entry block.
       Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), 128);
 
       Instruction *InsertPt = &*F.getEntryBlock().getFirstInsertionPt();
@@ -1466,20 +1465,17 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           "tile.out.local",
           InsertPt);
 
-      // OrigBB now branches to preload loop header.
+      // Branch to preload loop.
       BOrig.CreateBr(HeaderBB);
 
-      // Header: for (off = lid; off < validTileElems; off += lsize)
+      // Preload header: for (off = lid; off < validTileElems; off += lsize)
       IRBuilder<> BHeader(HeaderBB);
       PHINode *OffPhi = BHeader.CreatePHI(BHeader.getInt64Ty(), 2, "off");
       OffPhi->addIncoming(Lid0, OrigBB);
       Value *Cond = BHeader.CreateICmpULT(OffPhi, ValidTileElems, "tile.cond");
       BHeader.CreateCondBr(Cond, BodyBB, ExitBB);
 
-      // Body:
-      //   globalIdx = denseBase + off
-      //   tile[off] = base[globalIdx]
-      //   nextOff = off + lsize
+      // Preload body.
       IRBuilder<> BBody(BodyBB);
       Value *GlobalIdx = BBody.CreateAdd(DenseBase, OffPhi, "global.idx");
       Value *GlobalPtr = BBody.CreateGEP(Match.ElemTy, Match.BasePtr,
@@ -1491,19 +1487,18 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           Tile,
           OffPhi,
           "tile.ptr");
-
       BBody.CreateStore(Loaded, TilePtr);
 
       Value *NextOff = BBody.CreateAdd(OffPhi, LSize0, "off.next");
       BBody.CreateBr(HeaderBB);
       OffPhi->addIncoming(NextOff, BodyBB);
 
-      // Exit: barrier, then continue.
+      // Exit from preload.
       IRBuilder<> BExit(ExitBB);
       createBarrier(BExit, *M);
       BExit.CreateBr(ContBB);
 
-      // In ContBB, replace original global load with shared load.
+      // Compute block: load from shared tile, stage output in OutTile.
       IRBuilder<> BCont(&*ContBB->getFirstInsertionPt());
 
       Value *SharedIdx = BCont.CreateMul(
@@ -1526,7 +1521,11 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       LoadInst *SharedLoad =
           BCont.CreateLoad(Match.ElemTy, SharedPtr, "shared.load");
 
-      // Stage output into shared output tile as preparation for writeback.
+      // Replace original strided global load with shared load.
+      LI->replaceAllUsesWith(SharedLoad);
+      LI->eraseFromParent();
+
+      // Stage output into shared output tile.
       Value *OutIdx = Lid0;
       Value *OutTilePtr = BCont.CreateGEP(
           Match.ElemTy,
@@ -1535,26 +1534,81 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           "tile.out.ptr");
       BCont.CreateStore(SharedLoad, OutTilePtr);
 
-      // Keep original global store for now. Do NOT erase it yet,
-      // because writeback loop is not implemented yet.
-      //
-      // Optional: second barrier preparing for future writeback stage.
+      // Barrier before cooperative writeback.
       createBarrier(BCont, *M);
 
-      LI->replaceAllUsesWith(SharedLoad);
-      LI->eraseFromParent();
+      // Writeback blocks.
+      BasicBlock *WHeaderBB =
+          BasicBlock::Create(Ctx, "tile.writeback.header", &F);
+      BasicBlock *WBodyBB =
+          BasicBlock::Create(Ctx, "tile.writeback.body", &F);
+      BasicBlock *WExitBB =
+          BasicBlock::Create(Ctx, "tile.writeback.exit", &F);
+
+      // Replace ContBB terminator with branch to writeback header.
+      Instruction *ContTerm = ContBB->getTerminator();
+      if (ContTerm)
+        ContTerm->eraseFromParent();
+      IRBuilder<> BContTerm(ContBB);
+      BContTerm.CreateBr(WHeaderBB);
+
+      // Output global base: (gid - lid) + store_const
+      Value *OutBase = nullptr;
+      if (FoundStore)
+      {
+        IRBuilder<> BWPre(WHeaderBB);
+        OutBase = BWPre.CreateAdd(
+            BWPre.CreateSub(Gid0, Lid0, "out.group.base"),
+            ConstantInt::get(BWPre.getInt64Ty(), StoreMatch.ConstElems),
+            "out.base");
+      }
+
+      // Writeback header: for (woff = lid; woff < lsize; woff += lsize)
+      IRBuilder<> BWHeader(WHeaderBB);
+      PHINode *WOff = BWHeader.CreatePHI(BWHeader.getInt64Ty(), 2, "woff");
+      WOff->addIncoming(Lid0, ContBB);
+      Value *WCond = BWHeader.CreateICmpULT(WOff, LSize0, "write.cond");
+      BWHeader.CreateCondBr(WCond, WBodyBB, WExitBB);
+
+      // Writeback body.
+      IRBuilder<> BWBody(WBodyBB);
+      Value *OutSharedPtr = BWBody.CreateGEP(
+          Match.ElemTy, OutTile, WOff, "out.shared.ptr");
+      LoadInst *OutVal = BWBody.CreateLoad(
+          Match.ElemTy, OutSharedPtr, "out.shared.load");
+
+      if (FoundStore)
+      {
+        Value *OutGlobalIdx = BWBody.CreateAdd(OutBase, WOff, "out.global.idx");
+        Value *OutGlobalPtr = BWBody.CreateGEP(
+            Match.ElemTy, StoreMatch.BasePtr, OutGlobalIdx, "out.global.ptr");
+        BWBody.CreateStore(OutVal, OutGlobalPtr);
+      }
+
+      Value *WNext = BWBody.CreateAdd(WOff, LSize0, "woff.next");
+      BWBody.CreateBr(WHeaderBB);
+      WOff->addIncoming(WNext, WBodyBB);
+
+      // Writeback exit.
+      IRBuilder<> BWExit(WExitBB);
+      BWExit.CreateRetVoid();
+
+      // Remove the old original store now that writeback exists.
+      if (FoundStore && StoreMatch.SI && StoreMatch.SI->getParent())
+        StoreMatch.SI->eraseFromParent();
 
       outs() << "[TileRemapPass] remapped strided load in function="
              << F.getName()
              << " stride_elems=" << Match.StrideElems
-             << " const_elems=" << Match.ConstElems;
-      if (FoundStore)
-        outs() << " staged_output=yes";
-      else
-        outs() << " staged_output=no";
-      outs() << "\n";
+             << " const_elems=" << Match.ConstElems
+             << " staged_output=" << (FoundStore ? "yes" : "no")
+             << " writeback=" << (FoundStore ? "yes" : "no")
+             << "\n";
 
       Changed = true;
+
+      // For now, only transform one candidate load per function.
+      break;
     }
 
     return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
