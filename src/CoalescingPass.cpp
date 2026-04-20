@@ -1149,175 +1149,319 @@ static bool matchSimpleStridedLoad(LoadInst *LI,
   return true;
 }
 
-
-struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
+struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
+    if (shouldSkipFunction(F))
+      return PreservedAnalyses::all();
 
-    errs() << "ENTER run: " << F.getName() << "\n";
+    Module *M = F.getParent();
+    const DataLayout &DL = M->getDataLayout();
+    bool Changed = false;
 
-  if (shouldSkipFunction(F)) {
-    errs() << "SKIP function: " << F.getName() << "\n";
-    return PreservedAnalyses::all();
+    errs() << "ENTER tile-remap run: " << F.getName() << "\n";
+
+    SmallVector<LoadInst *, 8> CandidateLoads;
+    for (BasicBlock &BB : F) {
+      for (Instruction &I : BB) {
+        if (auto *LI = dyn_cast<LoadInst>(&I)) {
+          StridedLoadMatch Match;
+          if (matchSimpleStridedLoad(LI, DL, Match))
+            CandidateLoads.push_back(LI);
+        }
+      }
+    }
+
+    for (LoadInst *LI : CandidateLoads) {
+      if (!LI->getParent())
+        continue;
+
+      StridedLoadMatch Match;
+      if (!matchSimpleStridedLoad(LI, DL, Match))
+        continue;
+
+      BasicBlock *OrigBB = LI->getParent();
+      BasicBlock *ContBB = OrigBB->splitBasicBlock(LI, "tile.cont");
+      LLVMContext &Ctx = F.getContext();
+
+      // Remove the auto-created unconditional branch from OrigBB to ContBB.
+      OrigBB->getTerminator()->eraseFromParent();
+
+      // Create preload loop blocks.
+      BasicBlock *HeaderBB =
+          BasicBlock::Create(Ctx, "tile.preload.header", &F, ContBB);
+      BasicBlock *BodyBB =
+          BasicBlock::Create(Ctx, "tile.preload.body", &F, ContBB);
+      BasicBlock *ExitBB =
+          BasicBlock::Create(Ctx, "tile.preload.exit", &F, ContBB);
+
+      IRBuilder<> EntryBuilder(&*F.getEntryBlock().getFirstInsertionPt());
+
+      // local_id, local_size, global_id
+      Value *Lid0   = createGetLocalId0(EntryBuilder, *M);
+      Value *LSize0 = createGetLocalSize0(EntryBuilder, *M);
+      Value *Gid0   = createGetGlobalId0(EntryBuilder, *M);
+
+      // groupBase = gid - lid
+      Value *GroupBase = EntryBuilder.CreateSub(Gid0, Lid0, "group.base");
+
+      // denseBase = stride * groupBase + const
+      Value *StrideC = ConstantInt::get(EntryBuilder.getInt64Ty(),
+                                        Match.StrideElems);
+      Value *ConstC  = ConstantInt::get(EntryBuilder.getInt64Ty(),
+                                        Match.ConstElems);
+
+      Value *DenseBase = EntryBuilder.CreateAdd(
+          EntryBuilder.CreateMul(GroupBase, StrideC, "dense.mul"),
+          ConstC,
+          "dense.base");
+
+      // tileElems = stride * (local_size - 1) + 1
+      Value *TileElems = EntryBuilder.CreateAdd(
+          EntryBuilder.CreateMul(
+              StrideC,
+              EntryBuilder.CreateSub(LSize0,
+                                     ConstantInt::get(EntryBuilder.getInt64Ty(), 1),
+                                     "lsize.minus1"),
+              "tile.span"),
+          ConstantInt::get(EntryBuilder.getInt64Ty(), 1),
+          "tile.elems");
+
+      // Allocate local/shared tile in addrspace(3).
+      // This uses OpenCL local memory in SPIR.
+      AllocaInst *Tile = EntryBuilder.CreateAlloca(
+          Match.ElemTy, 3, TileElems, "tile.local");
+
+      // OrigBB now branches to preload loop header.
+      IRBuilder<> BOrig(OrigBB);
+      BOrig.CreateBr(HeaderBB);
+
+      // Header: for (off = lid; off < tileElems; off += lsize)
+      IRBuilder<> BHeader(HeaderBB);
+      PHINode *OffPhi = BHeader.CreatePHI(BHeader.getInt64Ty(), 2, "off");
+      OffPhi->addIncoming(Lid0, OrigBB);
+      Value *Cond = BHeader.CreateICmpULT(OffPhi, TileElems, "tile.cond");
+      BHeader.CreateCondBr(Cond, BodyBB, ExitBB);
+
+      // Body:
+      //   globalIdx = denseBase + off
+      //   tile[off] = base[globalIdx]
+      //   nextOff = off + lsize
+      IRBuilder<> BBody(BodyBB);
+      Value *GlobalIdx = BBody.CreateAdd(DenseBase, OffPhi, "global.idx");
+      Value *GlobalPtr = BBody.CreateGEP(Match.ElemTy, Match.BasePtr,
+                                         GlobalIdx, "global.ptr");
+      LoadInst *Loaded = BBody.CreateLoad(Match.ElemTy, GlobalPtr, "tile.ld");
+
+      Value *TilePtr = BBody.CreateGEP(Match.ElemTy, Tile, OffPhi, "tile.ptr");
+      BBody.CreateStore(Loaded, TilePtr);
+
+      Value *NextOff = BBody.CreateAdd(OffPhi, LSize0, "off.next");
+      BBody.CreateBr(HeaderBB);
+      OffPhi->addIncoming(NextOff, BodyBB);
+
+      // Exit: barrier, then continue.
+      IRBuilder<> BExit(ExitBB);
+      createBarrier(BExit, *M);
+      BExit.CreateBr(ContBB);
+
+      // In ContBB, replace original global load with shared load:
+      // shared index = stride * lid
+      IRBuilder<> BCont(&*ContBB->getFirstInsertionPt());
+      Value *LidCont = createGetLocalId0(BCont, *M);
+      Value *SharedIdx = BCont.CreateMul(
+          LidCont,
+          ConstantInt::get(BCont.getInt64Ty(), Match.StrideElems),
+          "shared.idx");
+      Value *SharedPtr =
+          BCont.CreateGEP(Match.ElemTy, Tile, SharedIdx, "shared.ptr");
+      LoadInst *SharedLoad =
+          BCont.CreateLoad(Match.ElemTy, SharedPtr, "shared.load");
+
+      LI->replaceAllUsesWith(SharedLoad);
+      LI->eraseFromParent();
+
+      outs() << "[TileRemapPass] remapped strided load in function="
+             << F.getName()
+             << " stride_elems=" << Match.StrideElems
+             << " const_elems=" << Match.ConstElems
+             << "\n";
+
+      Changed = true;
+    }
+
+    return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   }
-  // if (shouldSkipFunction(F))
-  //   return PreservedAnalyses::all();
+};
+
+
+// struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
+//   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
+
+//     errs() << "ENTER run: " << F.getName() << "\n";
+
+//   if (shouldSkipFunction(F)) {
+//     errs() << "SKIP function: " << F.getName() << "\n";
+//     return PreservedAnalyses::all();
+//   }
+//   // if (shouldSkipFunction(F))
+//   //   return PreservedAnalyses::all();
 
  
       
 
-  const DataLayout &DL = F.getParent()->getDataLayout();
-  std::vector<AccessInfo> Accesses;
+//   const DataLayout &DL = F.getParent()->getDataLayout();
+//   std::vector<AccessInfo> Accesses;
 
-  for (BasicBlock &BB : F) {
-    for (Instruction &I : BB) {
-      Value *Ptr = nullptr;
-      GetElementPtrInst *GEP = nullptr;
-      uint64_t AccessSizeBytes = 0;
-      std::string Kind;
+//   for (BasicBlock &BB : F) {
+//     for (Instruction &I : BB) {
+//       Value *Ptr = nullptr;
+//       GetElementPtrInst *GEP = nullptr;
+//       uint64_t AccessSizeBytes = 0;
+//       std::string Kind;
 
-      if (auto *LI = dyn_cast<LoadInst>(&I)) {
-        Ptr = LI->getPointerOperand();
-        GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
-        if (!GEP)
-          continue;
+//       if (auto *LI = dyn_cast<LoadInst>(&I)) {
+//         Ptr = LI->getPointerOperand();
+//         GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+//         if (!GEP)
+//           continue;
 
-        AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
-        if (AccessSizeBytes == 0)
-          continue;
+//         AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
+//         if (AccessSizeBytes == 0)
+//           continue;
 
-        Kind = "load";
-      } else if (auto *SI = dyn_cast<StoreInst>(&I)) {
-        Ptr = SI->getPointerOperand();
-        GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
-        if (!GEP)
-          continue;
+//         Kind = "load";
+//       } else if (auto *SI = dyn_cast<StoreInst>(&I)) {
+//         Ptr = SI->getPointerOperand();
+//         GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+//         if (!GEP)
+//           continue;
 
-        AccessSizeBytes =
-            getTypeSizeInBytes(DL, SI->getValueOperand()->getType());
-        if (AccessSizeBytes == 0)
-          continue;
+//         AccessSizeBytes =
+//             getTypeSizeInBytes(DL, SI->getValueOperand()->getType());
+//         if (AccessSizeBytes == 0)
+//           continue;
 
-        Kind = "store";
-      } else {
-        continue;
-      }
+//         Kind = "store";
+//       } else {
+//         continue;
+//       }
 
-      // Optional debugging
-      outs() << "    RAW PTR: ";
-      Ptr->printAsOperand(outs(), false);
-      outs() << "\n";
+//       // Optional debugging
+//       outs() << "    RAW PTR: ";
+//       Ptr->printAsOperand(outs(), false);
+//       outs() << "\n";
 
-      Value *Stripped = stripSimpleCasts(Ptr);
-      outs() << "    STRIPPED PTR: ";
-      Stripped->printAsOperand(outs(), false);
-      outs() << "\n";
+//       Value *Stripped = stripSimpleCasts(Ptr);
+//       outs() << "    STRIPPED PTR: ";
+//       Stripped->printAsOperand(outs(), false);
+//       outs() << "\n";
 
-      if (GEP) {
-        outs() << "    GEP PTR OPERAND: ";
-        GEP->getPointerOperand()->printAsOperand(outs(), false);
-        outs() << "\n";
+//       if (GEP) {
+//         outs() << "    GEP PTR OPERAND: ";
+//         GEP->getPointerOperand()->printAsOperand(outs(), false);
+//         outs() << "\n";
 
-        outs() << "    GEP INDICES:\n";
-        unsigned IdxNo = 0;
-        for (Value *Idx : GEP->indices()) {
-          outs() << "      idx" << IdxNo++ << "=";
-          Idx->printAsOperand(outs(), false);
+//         outs() << "    GEP INDICES:\n";
+//         unsigned IdxNo = 0;
+//         for (Value *Idx : GEP->indices()) {
+//           outs() << "      idx" << IdxNo++ << "=";
+//           Idx->printAsOperand(outs(), false);
 
-          AffineExpr IdxExpr = parseAffine(Idx);
-          outs() << " affine=" << formatAffineExpr(IdxExpr);
+//           AffineExpr IdxExpr = parseAffine(Idx);
+//           outs() << " affine=" << formatAffineExpr(IdxExpr);
 
-          ThreadVarKind TV = getThreadVarKind(Idx);
-          if (TV == ThreadVarKind::TidX)
-            outs() << " kind=tid_x";
-          else if (TV == ThreadVarKind::TidY)
-            outs() << " kind=tid_y";
-          else
-            outs() << " kind=" << affineThreadKindName(IdxExpr);
+//           ThreadVarKind TV = getThreadVarKind(Idx);
+//           if (TV == ThreadVarKind::TidX)
+//             outs() << " kind=tid_x";
+//           else if (TV == ThreadVarKind::TidY)
+//             outs() << " kind=tid_y";
+//           else
+//             outs() << " kind=" << affineThreadKindName(IdxExpr);
 
-          int64_t C = 0;
-          if (getConstInt(Idx, C))
-            outs() << " const=" << C;
+//           int64_t C = 0;
+//           if (getConstInt(Idx, C))
+//             outs() << " const=" << C;
 
-          outs() << "\n";
+//           outs() << "\n";
 
-          dumpIndexDef(Idx);
-        }
-      }
+//           dumpIndexDef(Idx);
+//         }
+//       }
 
-      AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
-      WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
-      std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
+//       AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
+//       WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
+//       std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
 
-      AccessInfo AI;
-      AI.Kind = Kind;
-      AI.BaseValueStr = valueToString(Ptr);
-      AI.BaseName = getBaseName(Ptr);
-      AI.OffsetStr = formatAffineExpr(ByteExpr);
-      AI.ThreadDependent = ByteExpr.dependsOnThreads();
-      AI.StrideXBytes = computeStrideXBytes(ByteExpr);
-      AI.AccessSize = AccessSizeBytes;
-      AI.Exact = WI.Exact;
-      AI.Contiguous = WI.Contiguous;
-      AI.Monotonic = WI.Monotonic;
-      AI.Broadcast = WI.Broadcast;
-      AI.ClassName = ClassName;
-      AI.Suggestion = suggestOptimization(AI);
+//       AccessInfo AI;
+//       AI.Kind = Kind;
+//       AI.BaseValueStr = valueToString(Ptr);
+//       AI.BaseName = getBaseName(Ptr);
+//       AI.OffsetStr = formatAffineExpr(ByteExpr);
+//       AI.ThreadDependent = ByteExpr.dependsOnThreads();
+//       AI.StrideXBytes = computeStrideXBytes(ByteExpr);
+//       AI.AccessSize = AccessSizeBytes;
+//       AI.Exact = WI.Exact;
+//       AI.Contiguous = WI.Contiguous;
+//       AI.Monotonic = WI.Monotonic;
+//       AI.Broadcast = WI.Broadcast;
+//       AI.ClassName = ClassName;
+//       AI.Suggestion = suggestOptimization(AI);
 
-      AI.Action = chooseTransform(AI);
-      AI.ActionReason = explainTransformChoice(AI);
+//       AI.Action = chooseTransform(AI);
+//       AI.ActionReason = explainTransformChoice(AI);
 
-      Accesses.push_back(std::move(AI));
-    }
-  }
+//       Accesses.push_back(std::move(AI));
+//     }
+//   }
 
-  outs() << "[CoalescingPass] function=" << F.getName() << "\n";
+//   outs() << "[CoalescingPass] function=" << F.getName() << "\n";
 
-  unsigned KeepCount = 0, BroadcastCount = 0, TileCount = 0, SkipCount = 0;
+//   unsigned KeepCount = 0, BroadcastCount = 0, TileCount = 0, SkipCount = 0;
 
-  for (const auto &AI : Accesses) {
-    outs() << "  access=" << AI.Kind
-           << " base=" << AI.BaseName
-           << " byte_offset=" << AI.OffsetStr
-           << " thread_dependent=" << (AI.ThreadDependent ? "yes" : "no")
-           << " stride_x_bytes=" << AI.StrideXBytes
-           << " access_size=" << AI.AccessSize
-           << " exact=" << (AI.Exact ? "yes" : "no")
-           << " contiguous=" << (AI.Contiguous ? "yes" : "no")
-           << " monotonic=" << (AI.Monotonic ? "yes" : "no")
-           << " broadcast=" << (AI.Broadcast ? "yes" : "no")
-           << " class=" << AI.ClassName
-           << "\n";
+//   for (const auto &AI : Accesses) {
+//     outs() << "  access=" << AI.Kind
+//            << " base=" << AI.BaseName
+//            << " byte_offset=" << AI.OffsetStr
+//            << " thread_dependent=" << (AI.ThreadDependent ? "yes" : "no")
+//            << " stride_x_bytes=" << AI.StrideXBytes
+//            << " access_size=" << AI.AccessSize
+//            << " exact=" << (AI.Exact ? "yes" : "no")
+//            << " contiguous=" << (AI.Contiguous ? "yes" : "no")
+//            << " monotonic=" << (AI.Monotonic ? "yes" : "no")
+//            << " broadcast=" << (AI.Broadcast ? "yes" : "no")
+//            << " class=" << AI.ClassName
+//            << "\n";
 
-    outs() << "    " << AI.Suggestion << "\n";
-    outs() << "    action=" << transformKindName(AI.Action) << "\n";
-    outs() << "    reason=" << AI.ActionReason << "\n";
+//     outs() << "    " << AI.Suggestion << "\n";
+//     outs() << "    action=" << transformKindName(AI.Action) << "\n";
+//     outs() << "    reason=" << AI.ActionReason << "\n";
 
-    switch (AI.Action) {
-    case TransformKind::KeepGlobal:
-      ++KeepCount;
-      break;
-    case TransformKind::BroadcastReuse:
-      ++BroadcastCount;
-      break;
-    case TransformKind::TileRemap:
-      ++TileCount;
-      break;
-    case TransformKind::SkipUnknown:
-      ++SkipCount;
-      break;
-    }
-  }
+//     switch (AI.Action) {
+//     case TransformKind::KeepGlobal:
+//       ++KeepCount;
+//       break;
+//     case TransformKind::BroadcastReuse:
+//       ++BroadcastCount;
+//       break;
+//     case TransformKind::TileRemap:
+//       ++TileCount;
+//       break;
+//     case TransformKind::SkipUnknown:
+//       ++SkipCount;
+//       break;
+//     }
+//   }
 
-  outs() << "  summary:"
-         << " keep=" << KeepCount
-         << " broadcast_reuse=" << BroadcastCount
-         << " tile_remap=" << TileCount
-         << " skip=" << SkipCount
-         << "\n";
+//   outs() << "  summary:"
+//          << " keep=" << KeepCount
+//          << " broadcast_reuse=" << BroadcastCount
+//          << " tile_remap=" << TileCount
+//          << " skip=" << SkipCount
+//          << "\n";
 
-  return PreservedAnalyses::all();
-}
-};
+//   return PreservedAnalyses::all();
+// }
+// };
 
 struct CoalescingRewritePass : public PassInfoMixin<CoalescingRewritePass> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
