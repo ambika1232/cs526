@@ -1224,6 +1224,18 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
             ConstC,
             "dense.base");
 
+        
+            Value *ValidTileElems = BOrig.CreateAdd(
+            BOrig.CreateMul(
+                StrideC,
+                BOrig.CreateSub(LSize0,
+                                ConstantInt::get(BOrig.getInt64Ty(), 1),
+                                "valid.lsize.minus1"),
+                "valid.tile.span"),
+            ConstantInt::get(BOrig.getInt64Ty(), 1),
+            "valid.tile.elems");
+            
+
         // For now, use a fixed tile size so the alloca is valid in entry.
 
         Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), 128);
@@ -1245,7 +1257,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
       IRBuilder<> BHeader(HeaderBB);
       PHINode *OffPhi = BHeader.CreatePHI(BHeader.getInt64Ty(), 2, "off");
       OffPhi->addIncoming(Lid0, OrigBB);
-      Value *Cond = BHeader.CreateICmpULT(OffPhi, TileElems, "tile.cond");
+      Value *Cond = BHeader.CreateICmpULT(OffPhi, ValidTileElems, "tile.cond");
       BHeader.CreateCondBr(Cond, BodyBB, ExitBB);
 
       // Body:
