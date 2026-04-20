@@ -1210,39 +1210,32 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
       Value *Gid0   = createGetGlobalId0(BOrig, *M);
 
       // groupBase = gid - lid
-      Value *GroupBase = BOrig.CreateSub(Gid0, Lid0, "group.base");
+      // groupBase = gid - lid
+        Value *GroupBase = BOrig.CreateSub(Gid0, Lid0, "group.base");
 
-      // denseBase = stride * groupBase + const
-      Value *StrideC = ConstantInt::get(BOrig.getInt64Ty(),
-                                        Match.StrideElems);
-      Value *ConstC  = ConstantInt::get(BOrig.getInt64Ty(),
-                                        Match.ConstElems);
+        // denseBase = stride * groupBase + const
+        Value *StrideC = ConstantInt::get(BOrig.getInt64Ty(),
+                                          Match.StrideElems);
+        Value *ConstC  = ConstantInt::get(BOrig.getInt64Ty(),
+                                          Match.ConstElems);
 
-      Value *DenseBase = BOrig.CreateAdd(
-          BOrig.CreateMul(GroupBase, StrideC, "dense.mul"),
-          ConstC,
-          "dense.base");
+        Value *DenseBase = BOrig.CreateAdd(
+            BOrig.CreateMul(GroupBase, StrideC, "dense.mul"),
+            ConstC,
+            "dense.base");
 
-      // tileElems = stride * (local_size - 1) + 1
-      Value *TileElems = BOrig.CreateAdd(
-          BOrig.CreateMul(
-              StrideC,
-              BOrig.CreateSub(LSize0,
-                                     ConstantInt::get(BOrig.getInt64Ty(), 1),
-                                     "lsize.minus1"),
-              "tile.span"),
-          ConstantInt::get(BOrig.getInt64Ty(), 1),
-          "tile.elems");
+        // For now, use a fixed tile size so the alloca is valid in entry.
+        Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), 128);
 
-      // Allocate local/shared tile in addrspace(3).
-      // This uses OpenCL local memory in SPIR.
-      AllocaInst *Tile = new AllocaInst(
-        Match.ElemTy,
-        3,                  // addrspace(3) = local/shared
-        TileElems,
-        Align(4),
-        "tile.local",
-        &*F.getEntryBlock().getFirstInsertionPt());
+        Instruction *InsertPt = &*F.getEntryBlock().getFirstInsertionPt();
+        AllocaInst *Tile = new AllocaInst(
+            Match.ElemTy,
+            3,
+            TileElems,
+            Align(4),
+            "tile.local",
+            InsertPt);
+
       // OrigBB now branches to preload loop header.
       // IRBuilder<> BOrig(OrigBB);
       BOrig.CreateBr(HeaderBB);
