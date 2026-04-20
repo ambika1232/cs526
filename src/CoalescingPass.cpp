@@ -1196,37 +1196,42 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
       BasicBlock *ExitBB =
           BasicBlock::Create(Ctx, "tile.preload.exit", &F, ContBB);
 
-      // IRBuilder<> EntryBuilder(&*F.getEntryBlock().getFirstInsertionPt());
+      // IRBuilder<> BOrig(&*F.getEntryBlock().getFirstInsertionPt());
       IRBuilder<> BOrig(OrigBB);
 
+
       // local_id, local_size, global_id
-      Value *Lid0   = createGetLocalId0(EntryBuilder, *M);
-      Value *LSize0 = createGetLocalSize0(EntryBuilder, *M);
-      Value *Gid0   = createGetGlobalId0(EntryBuilder, *M);
+      // Value *Lid0   = createGetLocalId0(BOrig, *M);
+      // Value *LSize0 = createGetLocalSize0(BOrig, *M);
+      // Value *Gid0   = createGetGlobalId0(BOrig, *M);
+
+      Value *Lid0   = createGetLocalId0(BOrig, *M);
+      Value *LSize0 = createGetLocalSize0(BOrig, *M);
+      Value *Gid0   = createGetGlobalId0(BOrig, *M);
 
       // groupBase = gid - lid
-      Value *GroupBase = EntryBuilder.CreateSub(Gid0, Lid0, "group.base");
+      Value *GroupBase = BOrig.CreateSub(Gid0, Lid0, "group.base");
 
       // denseBase = stride * groupBase + const
-      Value *StrideC = ConstantInt::get(EntryBuilder.getInt64Ty(),
+      Value *StrideC = ConstantInt::get(BOrig.getInt64Ty(),
                                         Match.StrideElems);
-      Value *ConstC  = ConstantInt::get(EntryBuilder.getInt64Ty(),
+      Value *ConstC  = ConstantInt::get(BOrig.getInt64Ty(),
                                         Match.ConstElems);
 
-      Value *DenseBase = EntryBuilder.CreateAdd(
-          EntryBuilder.CreateMul(GroupBase, StrideC, "dense.mul"),
+      Value *DenseBase = BOrig.CreateAdd(
+          BOrig.CreateMul(GroupBase, StrideC, "dense.mul"),
           ConstC,
           "dense.base");
 
       // tileElems = stride * (local_size - 1) + 1
-      Value *TileElems = EntryBuilder.CreateAdd(
-          EntryBuilder.CreateMul(
+      Value *TileElems = BOrig.CreateAdd(
+          BOrig.CreateMul(
               StrideC,
-              EntryBuilder.CreateSub(LSize0,
-                                     ConstantInt::get(EntryBuilder.getInt64Ty(), 1),
+              BOrig.CreateSub(LSize0,
+                                     ConstantInt::get(BOrig.getInt64Ty(), 1),
                                      "lsize.minus1"),
               "tile.span"),
-          ConstantInt::get(EntryBuilder.getInt64Ty(), 1),
+          ConstantInt::get(BOrig.getInt64Ty(), 1),
           "tile.elems");
 
       // Allocate local/shared tile in addrspace(3).
@@ -1239,7 +1244,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
         "tile.local",
         &*F.getEntryBlock().getFirstInsertionPt());
       // OrigBB now branches to preload loop header.
-      IRBuilder<> BOrig(OrigBB);
+      // IRBuilder<> BOrig(OrigBB);
       BOrig.CreateBr(HeaderBB);
 
       // Header: for (off = lid; off < tileElems; off += lsize)
@@ -1308,17 +1313,17 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
 };
 
 
-// struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
-//   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
+struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
 
-//     errs() << "ENTER run: " << F.getName() << "\n";
+    errs() << "ENTER run: " << F.getName() << "\n";
 
-//   if (shouldSkipFunction(F)) {
-//     errs() << "SKIP function: " << F.getName() << "\n";
-//     return PreservedAnalyses::all();
-//   }
-//   // if (shouldSkipFunction(F))
-//   //   return PreservedAnalyses::all();
+  if (shouldSkipFunction(F)) {
+    errs() << "SKIP function: " << F.getName() << "\n";
+    return PreservedAnalyses::all();
+  }
+  // if (shouldSkipFunction(F))
+  //   return PreservedAnalyses::all();
 
  
       
