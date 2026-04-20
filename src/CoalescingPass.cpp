@@ -1264,7 +1264,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
       //   globalIdx = denseBase + off
       //   tile[off] = base[globalIdx]
       //   nextOff = off + lsize
-      IRBuilder<> BBody(BodyBB);s
+      IRBuilder<> BBody(BodyBB);
       Value *GlobalIdx = BBody.CreateAdd(DenseBase, OffPhi, "global.idx");
       Value *GlobalPtr = BBody.CreateGEP(Match.ElemTy, Match.BasePtr,
                                          GlobalIdx, "global.ptr");
