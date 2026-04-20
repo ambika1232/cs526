@@ -1225,7 +1225,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass> {
             "dense.base");
 
         // For now, use a fixed tile size so the alloca is valid in entry.
-        Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), 128);
 
         Instruction *InsertPt = &*F.getEntryBlock().getFirstInsertionPt();
         AllocaInst *Tile = new AllocaInst(
