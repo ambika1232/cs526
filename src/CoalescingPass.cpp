@@ -1522,19 +1522,19 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 
       // Replace original strided global load with shared load.
       LI->replaceAllUsesWith(SharedLoad);
-      LI->eraseFromParent();
+LI->eraseFromParent();
 
-      // Stage output into shared output tile.
-      Value *OutIdx = Lid0;
-      Value *OutTilePtr = BCont.CreateGEP(
-          Match.ElemTy,
-          OutTile,
-          OutIdx,
-          "tile.out.ptr");
-      BCont.CreateStore(SharedLoad, OutTilePtr);
+IRBuilder<> BContAfter(ContBB);
 
-      // Barrier before cooperative writeback.
-      createBarrier(BCont, *M);
+Value *OutIdx = Lid0;
+Value *OutTilePtr = BContAfter.CreateGEP(
+    Match.ElemTy,
+    OutTile,
+    OutIdx,
+    "tile.out.ptr");
+BContAfter.CreateStore(SharedLoad, OutTilePtr);
+
+createBarrier(BContAfter, *M);
 
       // Writeback blocks.
       BasicBlock *WHeaderBB =
