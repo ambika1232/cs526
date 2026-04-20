@@ -27,6 +27,10 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/IR/InstIterator.h"
 
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+
 using namespace llvm;
 
 namespace {
@@ -1037,6 +1041,114 @@ static std::string classifyLoadForRewrite(LoadInst *LI, const DataLayout &DL) {
   return classifyAccess(ByteExpr, AccessSizeBytes, WI);
 }
 
+struct StridedLoadMatch {
+  LoadInst *LI = nullptr;
+  GetElementPtrInst *GEP = nullptr;
+  Value *BasePtr = nullptr;
+  Type *ElemTy = nullptr;
+
+  int64_t StrideElems = 0;   // e.g. 4 for A[4*tid]
+  int64_t ConstElems = 0;    // constant element offset
+  uint64_t ElemSizeBytes = 0;
+};
+
+static FunctionCallee getOrCreateOCLBuiltin(Module &M,
+                                            StringRef Name,
+                                            Type *RetTy,
+                                            ArrayRef<Type *> ArgTys) {
+  FunctionType *FTy = FunctionType::get(RetTy, ArgTys, false);
+  return M.getOrInsertFunction(Name, FTy);
+}
+
+static Value *createGetGlobalId0(IRBuilder<> &B, Module &M) {
+  auto Callee = getOrCreateOCLBuiltin(
+      M, "_Z13get_global_idj",
+      B.getInt64Ty(),
+      {B.getInt32Ty()});
+  return B.CreateCall(Callee, {B.getInt32(0)}, "gid0");
+}
+
+static Value *createGetLocalId0(IRBuilder<> &B, Module &M) {
+  auto Callee = getOrCreateOCLBuiltin(
+      M, "_Z12get_local_idj",
+      B.getInt64Ty(),
+      {B.getInt32Ty()});
+  return B.CreateCall(Callee, {B.getInt32(0)}, "lid0");
+}
+
+static Value *createGetLocalSize0(IRBuilder<> &B, Module &M) {
+  auto Callee = getOrCreateOCLBuiltin(
+      M, "_Z14get_local_sizej",
+      B.getInt64Ty(),
+      {B.getInt32Ty()});
+  return B.CreateCall(Callee, {B.getInt32(0)}, "lsize0");
+}
+
+static CallInst *createBarrier(IRBuilder<> &B, Module &M) {
+  auto Callee = getOrCreateOCLBuiltin(
+      M, "_Z7barrierj",
+      B.getVoidTy(),
+      {B.getInt32Ty()});
+
+  // CLK_LOCAL_MEM_FENCE = 1
+  return B.CreateCall(Callee, {B.getInt32(1)});
+}
+
+static bool matchSimpleStridedLoad(LoadInst *LI,
+                                   const DataLayout &DL,
+                                   StridedLoadMatch &Out) {
+  if (!LI || LI->isVolatile() || LI->isAtomic())
+    return false;
+
+  Value *Ptr = LI->getPointerOperand();
+  auto *GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+  if (!GEP)
+    return false;
+
+  Type *ElemTy = LI->getType();
+  uint64_t ElemSize = getTypeSizeInBytes(DL, ElemTy);
+  if (ElemSize == 0)
+    return false;
+
+  AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
+  if (!ByteExpr.Known || ByteExpr.HasUnknownInvariant)
+    return false;
+
+  // Only 1D tid_x patterns for now.
+  if (ByteExpr.CoeffTidY != 0)
+    return false;
+
+  // Needs to be thread-dependent, strided, and exact in element units.
+  if (ByteExpr.CoeffTidX == 0)
+    return false;
+
+  if ((ByteExpr.CoeffTidX % static_cast<int64_t>(ElemSize)) != 0)
+    return false;
+
+  if ((ByteExpr.Constant % static_cast<int64_t>(ElemSize)) != 0)
+    return false;
+
+  int64_t StrideElems = ByteExpr.CoeffTidX / static_cast<int64_t>(ElemSize);
+  int64_t ConstElems  = ByteExpr.Constant / static_cast<int64_t>(ElemSize);
+
+  if (StrideElems <= 1)
+    return false;
+
+  WarpAccessInfo WI = analyzeWarp(ByteExpr, ElemSize);
+  std::string ClassName = classifyAccess(ByteExpr, ElemSize, WI);
+  if (ClassName != "STRIDED")
+    return false;
+
+  Out.LI = LI;
+  Out.GEP = GEP;
+  Out.BasePtr = GEP->getPointerOperand();
+  Out.ElemTy = ElemTy;
+  Out.StrideElems = StrideElems;
+  Out.ConstElems = ConstElems;
+  Out.ElemSizeBytes = ElemSize;
+  return true;
+}
+
 
 struct CoalescingPass : public PassInfoMixin<CoalescingPass> {
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &) {
@@ -1305,10 +1417,24 @@ llvmGetPassPluginInfo() {
                 return true;
               }
 
+              if (Name == "tile-remap-pass") {
+                errs() << "ADDING TileRemapPass\n";
+                FPM.addPass(TileRemapPass());
+                return true;
+              }
+
               if (Name == "coalescing-pipeline") {
                 errs() << "ADDING CoalescingPass + CoalescingRewritePass\n";
                 FPM.addPass(CoalescingPass());
                 FPM.addPass(CoalescingRewritePass());
+                return true;
+              }
+
+              if (Name == "coalescing-full-pipeline") {
+                errs() << "ADDING CoalescingPass + CoalescingRewritePass + TileRemapPass\n";
+                FPM.addPass(CoalescingPass());
+                FPM.addPass(CoalescingRewritePass());
+                FPM.addPass(TileRemapPass());
                 return true;
               }
 
