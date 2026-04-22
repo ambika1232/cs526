@@ -1901,25 +1901,25 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
         // WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
         // std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
 
-        AccessInfo AI;
-        AI.Kind = Kind;
-        AI.BaseValueStr = valueToString(Ptr);
-        AI.BaseName = getBaseName(Ptr);
-        AI.OffsetStr = formatAffineExpr(ByteExpr);
-        AI.ThreadDependent = ByteExpr.dependsOnThreads();
-        AI.StrideXBytes = computeStrideXBytes(ByteExpr);
-        AI.AccessSize = AccessSizeBytes;
-        AI.Exact = WI.Exact;
-        AI.Contiguous = WI.Contiguous;
-        AI.Monotonic = WI.Monotonic;
-        AI.Broadcast = WI.Broadcast;
-        AI.ClassName = ClassName;
-        AI.Suggestion = suggestOptimization(AI);
+        // AccessInfo AI;
+        // AI.Kind = Kind;
+        // AI.BaseValueStr = valueToString(Ptr);
+        // AI.BaseName = getBaseName(Ptr);
+        // // AI.OffsetStr = formatAffineExpr(ByteExpr);
+        // // AI.ThreadDependent = ByteExpr.dependsOnThreads();
+        // // AI.StrideXBytes = computeStrideXBytes(ByteExpr);
+        // AI.AccessSize = AccessSizeBytes;
+        // AI.Exact = WI.Exact;
+        // AI.Contiguous = WI.Contiguous;
+        // AI.Monotonic = WI.Monotonic;
+        // AI.Broadcast = WI.Broadcast;
+        // AI.ClassName = ClassName;
+        // AI.Suggestion = suggestOptimization(AI);
 
-        AI.Action = chooseTransform(AI);
-        AI.ActionReason = explainTransformChoice(AI);
+        // AI.Action = chooseTransform(AI);
+        // AI.ActionReason = explainTransformChoice(AI);
 
-        Accesses.push_back(std::move(AI));
+        // Accesses.push_back(std::move(AI));
       }
     }
 
