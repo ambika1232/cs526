@@ -32,7 +32,7 @@
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/DominatorTree.h"
+#include "llvm/IR/Dominators.h"
 
 using namespace llvm;
 
