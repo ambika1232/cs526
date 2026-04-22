@@ -950,6 +950,15 @@ static SCEVAffineSummary summarizeSCEV(const SCEV *S,
 {
   SCEVAffineSummary R;
 
+  if (auto *SC = dyn_cast<SCEVSignExtendExpr>(S))
+    return summarizeSCEV(SC->getOperand(), TidXS, TidYS);
+
+  if (auto *ZC = dyn_cast<SCEVZeroExtendExpr>(S))
+    return summarizeSCEV(ZC->getOperand(), TidXS, TidYS);
+
+  if (auto *TC = dyn_cast<SCEVTruncateExpr>(S))
+    return summarizeSCEV(TC->getOperand(), TidXS, TidYS);
+
   if (auto *C = dyn_cast<SCEVConstant>(S))
   {
     R.Constant = C->getAPInt().getSExtValue();
@@ -1856,6 +1865,13 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
           unsigned IdxNo = 0;
           for (Value *Idx : GEP->indices())
           {
+
+            outs() << "      idx" << IdxNo++ << "=";
+            Idx->printAsOperand(outs(), false);
+            outs() << "\n";
+
+            dumpSCEVInfoForIndex(SE, TidXS, TidYS, Idx);
+            outs().flush();
             // outs() << "      idx" << IdxNo++ << "=";
             // Idx->printAsOperand(outs(), false);
 
@@ -1881,9 +1897,9 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
           }
         }
 
-        AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
-        WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
-        std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
+        // AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
+        // WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
+        // std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
 
         AccessInfo AI;
         AI.Kind = Kind;
