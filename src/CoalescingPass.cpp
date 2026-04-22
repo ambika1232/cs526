@@ -29,6 +29,11 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 
+#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/DominatorTree.h"
+
 using namespace llvm;
 
 namespace
@@ -130,7 +135,6 @@ namespace
           continue;
         }
       }
-      break;
     }
     return V;
   }
@@ -202,6 +206,16 @@ struct AffineExpr
   {
     return CoeffTidX != 0 || CoeffTidY != 0;
   }
+};
+
+struct SCEVAffineSummary
+{
+  bool Known = true;
+  int64_t CoeffTidX = 0;
+  int64_t CoeffTidY = 0;
+  int64_t Constant = 0;
+  bool HasOtherSymbolic = false;
+  bool HasLoopRecurrence = false;
 };
 
 static AffineExpr invalidExpr()
@@ -367,6 +381,45 @@ static const char *affineThreadKindName(const AffineExpr &E)
     return "invariant_sym";
 
   return "other";
+}
+
+static Value *findGlobalIdDim(Function &F, int64_t TargetDim)
+{
+  for (Instruction &I : instructions(F))
+  {
+    auto *CB = dyn_cast<CallBase>(&I);
+    if (!CB)
+      continue;
+
+    Function *Callee = CB->getCalledFunction();
+    if (!Callee)
+      continue;
+
+    if (!Callee->getName().contains("get_global_id"))
+      continue;
+
+    if (CB->arg_size() < 1)
+      continue;
+
+    int64_t Dim = -1;
+    if (!getConstInt(CB->getArgOperand(0), Dim))
+      continue;
+
+    if (Dim == TargetDim)
+      return CB;
+  }
+
+  return nullptr;
+}
+
+static Value *findTidXValue(Function &F)
+{
+  return findGlobalIdDim(F, 0);
+}
+
+static Value *findTidYValue(Function &F)
+{
+  return findGlobalIdDim(F, 1);
 }
 
 static std::string formatAffineExpr(const AffineExpr &E)
@@ -881,6 +934,123 @@ static int64_t computeStrideXBytes(const AffineExpr &E)
   return std::llabs(E.CoeffTidX);
 }
 
+static bool getConstFromSCEV(const SCEV *S, int64_t &Out)
+{
+  if (auto *C = dyn_cast<SCEVConstant>(S))
+  {
+    Out = C->getAPInt().getSExtValue();
+    return true;
+  }
+  return false;
+}
+
+static SCEVAffineSummary summarizeSCEV(const SCEV *S,
+                                       const SCEV *TidXS,
+                                       const SCEV *TidYS)
+{
+  SCEVAffineSummary R;
+
+  if (auto *C = dyn_cast<SCEVConstant>(S))
+  {
+    R.Constant = C->getAPInt().getSExtValue();
+    return R;
+  }
+
+  if (TidXS && S == TidXS)
+  {
+    R.CoeffTidX = 1;
+    return R;
+  }
+
+  if (TidYS && S == TidYS)
+  {
+    R.CoeffTidY = 1;
+    return R;
+  }
+
+  if (auto *Add = dyn_cast<SCEVAddExpr>(S))
+  {
+    SCEVAffineSummary Total;
+    for (const SCEV *Op : Add->operands())
+    {
+      SCEVAffineSummary Part = summarizeSCEV(Op, TidXS, TidYS);
+      if (!Part.Known)
+      {
+        Total.Known = false;
+        return Total;
+      }
+
+      Total.CoeffTidX += Part.CoeffTidX;
+      Total.CoeffTidY += Part.CoeffTidY;
+      Total.Constant += Part.Constant;
+      Total.HasOtherSymbolic |= Part.HasOtherSymbolic;
+      Total.HasLoopRecurrence |= Part.HasLoopRecurrence;
+    }
+    return Total;
+  }
+
+  if (auto *Mul = dyn_cast<SCEVMulExpr>(S))
+  {
+    if (Mul->getNumOperands() != 2)
+    {
+      R.Known = false;
+      return R;
+    }
+
+    const SCEV *A = Mul->getOperand(0);
+    const SCEV *B = Mul->getOperand(1);
+    int64_t C = 0;
+
+    if (getConstFromSCEV(A, C))
+    {
+      SCEVAffineSummary Part = summarizeSCEV(B, TidXS, TidYS);
+      if (!Part.Known || Part.HasOtherSymbolic || Part.HasLoopRecurrence)
+      {
+        R.Known = false;
+        return R;
+      }
+
+      Part.CoeffTidX *= C;
+      Part.CoeffTidY *= C;
+      Part.Constant *= C;
+      return Part;
+    }
+
+    if (getConstFromSCEV(B, C))
+    {
+      SCEVAffineSummary Part = summarizeSCEV(A, TidXS, TidYS);
+      if (!Part.Known || Part.HasOtherSymbolic || Part.HasLoopRecurrence)
+      {
+        R.Known = false;
+        return R;
+      }
+
+      Part.CoeffTidX *= C;
+      Part.CoeffTidY *= C;
+      Part.Constant *= C;
+      return Part;
+    }
+
+    R.Known = false;
+    return R;
+  }
+
+  if (isa<SCEVAddRecExpr>(S))
+  {
+    R.HasLoopRecurrence = true;
+    return R;
+  }
+
+  if (isa<SCEVUnknown>(S))
+  {
+    R.HasOtherSymbolic = true;
+    return R;
+  }
+
+  R.Known = false;
+  return R;
+}
+
 struct WarpAccessInfo
 {
   bool Valid = false;
@@ -1149,6 +1319,24 @@ static void dumpIndexDef(Value *V)
   }
 }
 
+static void dumpSCEVInfoForIndex(ScalarEvolution &SE,
+                                 const SCEV *TidXS,
+                                 const SCEV *TidYS,
+                                 Value *Idx)
+{
+  const SCEV *S = SE.getSCEV(Idx);
+  SCEVAffineSummary Sum = summarizeSCEV(S, TidXS, TidYS);
+
+  outs() << "        scev=" << *S
+         << " scev_coeff_tid_x=" << Sum.CoeffTidX
+         << " scev_coeff_tid_y=" << Sum.CoeffTidY
+         << " scev_const=" << Sum.Constant
+         << " scev_looprec=" << (Sum.HasLoopRecurrence ? "yes" : "no")
+         << " scev_other=" << (Sum.HasOtherSymbolic ? "yes" : "no")
+         << " scev_known=" << (Sum.Known ? "yes" : "no")
+         << "\n";
+}
+
 static std::string classifyLoadForRewrite(LoadInst *LI, const DataLayout &DL)
 {
   if (!LI)
@@ -1344,13 +1532,29 @@ static bool matchSimpleCoalescedStore(StoreInst *SI,
 
 struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &)
+  // PreservedAnalyses run(Function &F, FunctionAnalysisManager &)
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM)
   {
-    if (shouldSkipFunction(F))
-      return PreservedAnalyses::all();
 
-    Module *M = F.getParent();
-    const DataLayout &DL = M->getDataLayout();
+    auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+    auto &LI = AM.getResult<LoopAnalysis>(F);
+    auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
+
+    if (shouldSkipFunction(F))
+    {
+      errs() << "SKIP function: " << F.getName() << "\n";
+      return PreservedAnalyses::all();
+    }
+
+    auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+    auto &LI = AM.getResult<LoopAnalysis>(F);
+    auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
+
+    (void)LI;
+    (void)DT;
+
+    const DataLayout &DL = F.getParent()->getDataLayout();
+
     bool Changed = false;
 
     errs() << "ENTER tile-remap run: " << F.getName() << "\n";
@@ -1537,68 +1741,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 
       createBarrier(BContAfter, *M);
 
-      // Writeback blocks.
-      BasicBlock *WHeaderBB =
-          BasicBlock::Create(Ctx, "tile.writeback.header", &F);
-      BasicBlock *WBodyBB =
-          BasicBlock::Create(Ctx, "tile.writeback.body", &F);
-      BasicBlock *WExitBB =
-          BasicBlock::Create(Ctx, "tile.writeback.exit", &F);
-
-      // Replace ContBB terminator with branch to writeback header.
-      Instruction *ContTerm = ContBB->getTerminator();
-      if (ContTerm)
-        ContTerm->eraseFromParent();
-
-      IRBuilder<> BContTerm(ContBB);
-      BContTerm.CreateBr(WHeaderBB);
-
-      // Output global base: (gid - lid) + store_const
-      // Writeback header: for (woff = lid; woff < lsize; woff += lsize)
-      IRBuilder<> BWHeader(WHeaderBB);
-
-      PHINode *WOff = BWHeader.CreatePHI(BWHeader.getInt64Ty(), 2, "woff");
-      WOff->addIncoming(Lid0, ContBB);
-
-      Value *OutBase = nullptr;
-      if (FoundStore)
-      {
-        OutBase = BWHeader.CreateAdd(
-            BWHeader.CreateSub(Gid0, Lid0, "out.group.base"),
-            ConstantInt::get(BWHeader.getInt64Ty(), StoreMatch.ConstElems),
-            "out.base");
-      }
-
-      Value *WCond = BWHeader.CreateICmpULT(WOff, LSize0, "write.cond");
-      BWHeader.CreateCondBr(WCond, WBodyBB, WExitBB);
-
-      // Writeback body.
-      IRBuilder<> BWBody(WBodyBB);
-      Value *OutSharedPtr = BWBody.CreateGEP(
-          Match.ElemTy, OutTile, WOff, "out.shared.ptr");
-      LoadInst *OutVal = BWBody.CreateLoad(
-          Match.ElemTy, OutSharedPtr, "out.shared.load");
-
-      if (FoundStore)
-      {
-        Value *OutGlobalIdx = BWBody.CreateAdd(OutBase, WOff, "out.global.idx");
-        Value *OutGlobalPtr = BWBody.CreateGEP(
-            Match.ElemTy, StoreMatch.BasePtr, OutGlobalIdx, "out.global.ptr");
-        BWBody.CreateStore(OutVal, OutGlobalPtr);
-      }
-
-      Value *WNext = BWBody.CreateAdd(WOff, LSize0, "woff.next");
-      BWBody.CreateBr(WHeaderBB);
-      WOff->addIncoming(WNext, WBodyBB);
-
-      // Writeback exit.
-      IRBuilder<> BWExit(WExitBB);
-      BWExit.CreateRetVoid();
-
-      // Remove the old original store now that writeback exists.
-      if (FoundStore && StoreMatch.SI && StoreMatch.SI->getParent())
-        StoreMatch.SI->eraseFromParent();
-
       outs() << "[TileRemapPass] remapped strided load in function="
              << F.getName()
              << " stride_elems=" << Match.StrideElems
@@ -1608,9 +1750,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
              << "\n";
 
       Changed = true;
-
-      // For now, only transform one candidate load per function.
-      break;
+      verifyFunction(F, &errs());
     }
 
     return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
@@ -1619,7 +1759,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 
 struct CoalescingPass : public PassInfoMixin<CoalescingPass>
 {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &)
+  // PreservedAnalyses run(Function &F, FunctionAnalysisManager &)
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM)
   {
 
     errs() << "ENTER run: " << F.getName() << "\n";
@@ -1629,11 +1770,27 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
       errs() << "SKIP function: " << F.getName() << "\n";
       return PreservedAnalyses::all();
     }
-    if (shouldSkipFunction(F))
-      return PreservedAnalyses::all();
+
+    auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+    auto &LI = AM.getResult<LoopAnalysis>(F);
+    auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
+
+    (void)LI;
+    (void)DT;
 
     const DataLayout &DL = F.getParent()->getDataLayout();
     std::vector<AccessInfo> Accesses;
+
+    Value *TidXVal = findTidXValue(F);
+    Value *TidYVal = findTidYValue(F);
+
+    const SCEV *TidXS = TidXVal ? SE.getSCEV(TidXVal) : nullptr;
+    const SCEV *TidYS = TidYVal ? SE.getSCEV(TidYVal) : nullptr;
+
+    if (TidXS)
+      outs() << "[SCEV] tid_x=" << *TidXS << "\n";
+    if (TidYS)
+      outs() << "[SCEV] tid_y=" << *TidYS << "\n";
 
     for (BasicBlock &BB : F)
     {
@@ -1686,6 +1843,12 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
         Stripped->printAsOperand(outs(), false);
         outs() << "\n";
 
+        const SCEV *PtrS = SE.getSCEV(Ptr);
+        outs() << "    PTR SCEV: " << *PtrS << "\n";
+
+        const SCEV *PtrBaseS = SE.getPointerBase(PtrS);
+        outs() << "    PTR BASE SCEV: " << *PtrBaseS << "\n";
+
         if (GEP)
         {
           outs() << "    GEP PTR OPERAND: ";
@@ -1717,6 +1880,7 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
             outs() << "\n";
 
             dumpIndexDef(Idx);
+            dumpSCEVInfoForIndex(SE, TidXS, TidYS, Idx);
           }
         }
 
@@ -1799,7 +1963,8 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
 
 struct CoalescingRewritePass : public PassInfoMixin<CoalescingRewritePass>
 {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &)
+  // PreservedAnalyses run(Function &F, FunctionAnalysisManager &)
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM)
   {
     if (shouldSkipFunction(F))
       return PreservedAnalyses::all();
