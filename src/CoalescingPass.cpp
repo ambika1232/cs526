@@ -1536,10 +1536,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM)
   {
 
-    auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
-    auto &LI = AM.getResult<LoopAnalysis>(F);
-    auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
-
     if (shouldSkipFunction(F))
     {
       errs() << "SKIP function: " << F.getName() << "\n";
@@ -1553,7 +1549,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
     (void)LI;
     (void)DT;
 
-    const DataLayout &DL = F.getParent()->getDataLayout();
+    Module *M = F.getParent();
+    const DataLayout &DL = M->getDataLayout();
 
     bool Changed = false;
 
