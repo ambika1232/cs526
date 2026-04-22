@@ -1856,25 +1856,25 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
           unsigned IdxNo = 0;
           for (Value *Idx : GEP->indices())
           {
-            outs() << "      idx" << IdxNo++ << "=";
-            Idx->printAsOperand(outs(), false);
+            // outs() << "      idx" << IdxNo++ << "=";
+            // Idx->printAsOperand(outs(), false);
 
-            // AffineExpr IdxExpr = parseAffine(Idx);
-            outs() << " affine=" << formatAffineExpr(IdxExpr);
+            // // AffineExpr IdxExpr = parseAffine(Idx);
+            // outs() << " affine=" << formatAffineExpr(IdxExpr);
 
-            ThreadVarKind TV = getThreadVarKind(Idx);
-            if (TV == ThreadVarKind::TidX)
-              outs() << " kind=tid_x";
-            else if (TV == ThreadVarKind::TidY)
-              outs() << " kind=tid_y";
-            else
-              outs() << " kind=" << affineThreadKindName(IdxExpr);
+            // ThreadVarKind TV = getThreadVarKind(Idx);
+            // if (TV == ThreadVarKind::TidX)
+            //   outs() << " kind=tid_x";
+            // else if (TV == ThreadVarKind::TidY)
+            //   outs() << " kind=tid_y";
+            // else
+            //   outs() << " kind=" << affineThreadKindName(IdxExpr);
 
-            int64_t C = 0;
-            if (getConstInt(Idx, C))
-              outs() << " const=" << C;
+            // int64_t C = 0;
+            // if (getConstInt(Idx, C))
+            //   outs() << " const=" << C;
 
-            outs() << "\n";
+            // outs() << "\n";
 
             // dumpIndexDef(Idx);
             dumpSCEVInfoForIndex(SE, TidXS, TidYS, Idx);
