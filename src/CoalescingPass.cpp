@@ -1859,7 +1859,7 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
             outs() << "      idx" << IdxNo++ << "=";
             Idx->printAsOperand(outs(), false);
 
-            AffineExpr IdxExpr = parseAffine(Idx);
+            // AffineExpr IdxExpr = parseAffine(Idx);
             outs() << " affine=" << formatAffineExpr(IdxExpr);
 
             ThreadVarKind TV = getThreadVarKind(Idx);
@@ -1876,7 +1876,7 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
 
             outs() << "\n";
 
-            dumpIndexDef(Idx);
+            // dumpIndexDef(Idx);
             dumpSCEVInfoForIndex(SE, TidXS, TidYS, Idx);
           }
         }
