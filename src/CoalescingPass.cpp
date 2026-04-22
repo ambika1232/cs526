@@ -1060,6 +1060,36 @@ static SCEVAffineSummary summarizeSCEV(const SCEV *S,
   return R;
 }
 
+
+static SCEVAffineSummary summarizeSCEVValue(Value *V,
+                                            ScalarEvolution &SE,
+                                            const SCEV *TidXS,
+                                            const SCEV *TidYS)
+{
+  V = stripSimpleCasts(V);
+  V = resolveAllocaStoredValue(V);
+
+  switch (getThreadVarKind(V))
+  {
+  case ThreadVarKind::TidX:
+  {
+    SCEVAffineSummary R;
+    R.CoeffTidX = 1;
+    return R;
+  }
+  case ThreadVarKind::TidY:
+  {
+    SCEVAffineSummary R;
+    R.CoeffTidY = 1;
+    return R;
+  }
+  case ThreadVarKind::None:
+    break;
+  }
+
+  return summarizeSCEV(SE.getSCEV(V), TidXS, TidYS);
+}
+
 struct WarpAccessInfo
 {
   bool Valid = false;
@@ -1333,8 +1363,11 @@ static void dumpSCEVInfoForIndex(ScalarEvolution &SE,
                                  const SCEV *TidYS,
                                  Value *Idx)
 {
-  const SCEV *S = SE.getSCEV(Idx);
-  SCEVAffineSummary Sum = summarizeSCEV(S, TidXS, TidYS);
+  Value *NormIdx = stripSimpleCasts(Idx);
+NormIdx = resolveAllocaStoredValue(NormIdx);
+
+const SCEV *S = SE.getSCEV(NormIdx);
+SCEVAffineSummary Sum = summarizeSCEVValue(Idx, SE, TidXS, TidYS);
 
   outs() << "        scev=" << *S
          << " scev_coeff_tid_x=" << Sum.CoeffTidX
