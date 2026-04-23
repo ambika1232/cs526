@@ -7,7 +7,7 @@ if [[ $# -lt 3 ]]; then
 fi
 
 PLUGIN="$1"
-PASS_NAME="$2"
+PASS_NAME="$2"  
 INPUT="$3"
 
-opt -load-pass-plugin "$PLUGIN" -passes="$PASS_NAME" -disable-output "$INPUT" 2>&1
+opt -load-pass-plugin "$PLUGIN" -passes="mem2reg,$PASS_NAME" -disable-output "$INPUT" 2>&1
