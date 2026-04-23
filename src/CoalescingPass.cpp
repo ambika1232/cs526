@@ -1492,31 +1492,6 @@ struct SCEVGEPIndexInfo
 };
 
 
-{
-  Value *NormV = stripSimpleCasts(V);
-  NormV = resolveAllocaStoredValue(NormV);
-
-  switch (getThreadVarKind(NormV))
-  {
-  case ThreadVarKind::TidX:
-  {
-    SCEVAffineSummary R;
-    R.CoeffTidX = 1;
-    return R;
-  }
-  case ThreadVarKind::TidY:
-  {
-    SCEVAffineSummary R;
-    R.CoeffTidY = 1;
-    return R;
-  }
-  case ThreadVarKind::None:
-    break;
-  }
-
-  const SCEV *S = SE.getSCEV(NormV);
-  return summarizeSCEV(S, TidXS, TidYS);
-}
 
 static bool summarizeSimpleGEPIndex(GetElementPtrInst *GEP,
                                     ScalarEvolution &SE,
