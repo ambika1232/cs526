@@ -1760,8 +1760,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
         continue;
 
       StridedLoadMatch Match;
-      if (matchSimpleStridedLoadSCEV(LoadI, DL, SE, TidXS, TidYS, Match))
-        CandidateLoads.push_back(LoadI);
+      if (!matchSimpleStridedLoadSCEV(LI, DL, SE, TidXS, TidYS, Match))
+        continue;
 
       BasicBlock *OrigBB = LI->getParent();
       BasicBlock *ContBB = OrigBB->splitBasicBlock(LI, "tile.cont");
