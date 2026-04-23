@@ -1051,35 +1051,35 @@ static SCEVAffineSummary summarizeSCEV(const SCEV *S,
   }
 
   if (auto *U = dyn_cast<SCEVUnknown>(S))
-{
-  Value *V = const_cast<Value *>(U->getValue());
-  V = stripSimpleCasts(V);
-  V = resolveAllocaStoredValue(V);
-
-  switch (getThreadVarKind(V))
   {
-  case ThreadVarKind::TidX:
-    R.CoeffTidX = 1;
-    return R;
-  case ThreadVarKind::TidY:
-    R.CoeffTidY = 1;
-    return R;
-  case ThreadVarKind::None:
-    break;
-  }
+    Value *V = const_cast<Value *>(U->getValue());
+    V = stripSimpleCasts(V);
+    V = resolveAllocaStoredValue(V);
 
-  if (isa<ConstantInt>(V))
-  {
-    if (auto *CI = dyn_cast<ConstantInt>(V))
+    switch (getThreadVarKind(V))
     {
-      R.Constant = CI->getSExtValue();
+    case ThreadVarKind::TidX:
+      R.CoeffTidX = 1;
       return R;
+    case ThreadVarKind::TidY:
+      R.CoeffTidY = 1;
+      return R;
+    case ThreadVarKind::None:
+      break;
     }
-  }
 
-  R.HasOtherSymbolic = true;
-  return R;
-}
+    if (isa<ConstantInt>(V))
+    {
+      if (auto *CI = dyn_cast<ConstantInt>(V))
+      {
+        R.Constant = CI->getSExtValue();
+        return R;
+      }
+    }
+
+    R.HasOtherSymbolic = true;
+    return R;
+  }
   R.Known = false;
   return R;
 }
@@ -1480,6 +1480,148 @@ static CallInst *createBarrier(IRBuilder<> &B, Module &M)
   return B.CreateCall(Callee, {B.getInt32(1)});
 }
 
+struct SCEVGEPIndexInfo
+{
+  bool Known = false;
+  int64_t CoeffTidX = 0;
+  int64_t CoeffTidY = 0;
+  int64_t ConstantElems = 0;
+  bool HasOtherSymbolic = false;
+  bool HasLoopRecurrence = false;
+};
+
+static SCEVAffineSummary summarizeSCEVValue(Value *V,
+                                            ScalarEvolution &SE,
+                                            const SCEV *TidXS,
+                                            const SCEV *TidYS)
+{
+  Value *NormV = stripSimpleCasts(V);
+  NormV = resolveAllocaStoredValue(NormV);
+
+  switch (getThreadVarKind(NormV))
+  {
+  case ThreadVarKind::TidX:
+  {
+    SCEVAffineSummary R;
+    R.CoeffTidX = 1;
+    return R;
+  }
+  case ThreadVarKind::TidY:
+  {
+    SCEVAffineSummary R;
+    R.CoeffTidY = 1;
+    return R;
+  }
+  case ThreadVarKind::None:
+    break;
+  }
+
+  const SCEV *S = SE.getSCEV(NormV);
+  return summarizeSCEV(S, TidXS, TidYS);
+}
+
+static bool summarizeSimpleGEPIndex(GetElementPtrInst *GEP,
+                                    ScalarEvolution &SE,
+                                    const SCEV *TidXS,
+                                    const SCEV *TidYS,
+                                    SCEVGEPIndexInfo &Out)
+{
+  if (!GEP)
+    return false;
+
+  // For now only handle a single non-struct index cleanly.
+  Value *OnlyIdx = nullptr;
+  Type *IndexedTy = nullptr;
+
+  for (auto GTI = gep_type_begin(GEP), GTE = gep_type_end(GEP); GTI != GTE; ++GTI)
+  {
+    Value *Idx = GTI.getOperand();
+
+    if (GTI.getStructTypeOrNull())
+      return false; // skip struct indexing for now
+
+    if (OnlyIdx)
+      return false; // multiple non-struct indices: not handling yet
+
+    OnlyIdx = Idx;
+    IndexedTy = GTI.getIndexedType();
+  }
+
+  if (!OnlyIdx || !IndexedTy)
+    return false;
+
+  SCEVAffineSummary Sum = summarizeSCEVValue(OnlyIdx, SE, TidXS, TidYS);
+
+  Out.Known = Sum.Known;
+  Out.CoeffTidX = Sum.CoeffTidX;
+  Out.CoeffTidY = Sum.CoeffTidY;
+  Out.ConstantElems = Sum.Constant;
+  Out.HasOtherSymbolic = Sum.HasOtherSymbolic;
+  Out.HasLoopRecurrence = Sum.HasLoopRecurrence;
+
+  return true;
+}
+
+static bool matchSimpleStridedLoadSCEV(LoadInst *LI,
+                                       const DataLayout &DL,
+                                       ScalarEvolution &SE,
+                                       const SCEV *TidXS,
+                                       const SCEV *TidYS,
+                                       StridedLoadMatch &Out)
+{
+  if (!LI || LI->isVolatile() || LI->isAtomic())
+    return false;
+
+  Value *Ptr = LI->getPointerOperand();
+  auto *GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
+  if (!GEP)
+    return false;
+
+  Type *ElemTy = LI->getType();
+  uint64_t ElemSize = getTypeSizeInBytes(DL, ElemTy);
+  if (ElemSize == 0)
+    return false;
+
+  SCEVGEPIndexInfo GI;
+  if (!summarizeSimpleGEPIndex(GEP, SE, TidXS, TidYS, GI))
+    return false;
+
+  if (!GI.Known)
+    return false;
+
+  if (GI.HasOtherSymbolic || GI.HasLoopRecurrence)
+    return false;
+
+  // Only 1D tid_x patterns for now.
+  if (GI.CoeffTidY != 0)
+    return false;
+
+  if (GI.CoeffTidX == 0)
+    return false;
+
+  int64_t StrideElems = GI.CoeffTidX;
+  int64_t ConstElems = GI.ConstantElems;
+
+  if (StrideElems <= 1)
+    return false;
+
+  Out.LI = LI;
+  Out.GEP = GEP;
+  Out.BasePtr = GEP->getPointerOperand();
+  Out.ElemTy = ElemTy;
+  Out.StrideElems = StrideElems;
+  Out.ConstElems = ConstElems;
+  Out.ElemSizeBytes = ElemSize;
+
+  outs() << "[SCEV strided match] ";
+  LI->printAsOperand(outs(), false);
+  outs() << " stride_elems=" << StrideElems
+         << " const_elems=" << ConstElems
+         << "\n";
+
+  return true;
+}
+
 static bool matchSimpleStridedLoad(LoadInst *LI,
                                    const DataLayout &DL,
                                    StridedLoadMatch &Out)
@@ -1611,6 +1753,12 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
     auto &LI = AM.getResult<LoopAnalysis>(F);
     auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
 
+    Value *TidXVal = findTidXValue(F);
+    Value *TidYVal = findTidYValue(F);
+
+    const SCEV *TidXS = TidXVal ? SE.getSCEV(TidXVal) : nullptr;
+    const SCEV *TidYS = TidYVal ? SE.getSCEV(TidYVal) : nullptr;
+
     (void)LI;
     (void)DT;
 
@@ -1621,27 +1769,9 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 
     errs() << "ENTER tile-remap run: " << F.getName() << "\n";
 
-    // Find one simple coalesced store up front.
-    CoalescedStoreMatch StoreMatch;
-    bool FoundStore = false;
-    for (BasicBlock &BB : F)
-    {
-      for (Instruction &I : BB)
-      {
-        if (auto *SI = dyn_cast<StoreInst>(&I))
-        {
-          if (matchSimpleCoalescedStore(SI, DL, StoreMatch))
-          {
-            FoundStore = true;
-            break;
-          }
-        }
-      }
-      if (FoundStore)
-        break;
-    }
+    /
 
-    SmallVector<LoadInst *, 8> CandidateLoads;
+        SmallVector<LoadInst *, 8> CandidateLoads;
     for (BasicBlock &BB : F)
     {
       for (Instruction &I : BB)
@@ -1649,8 +1779,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
         if (auto *LI = dyn_cast<LoadInst>(&I))
         {
           StridedLoadMatch Match;
-          if (matchSimpleStridedLoad(LI, DL, Match))
-            CandidateLoads.push_back(LI);
+          if (matchSimpleStridedLoadSCEV(LoadI, DL, SE, TidXS, TidYS, Match))
+            CandidateLoads.push_back(LoadI);
         }
       }
     }
@@ -1661,7 +1791,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
         continue;
 
       StridedLoadMatch Match;
-      if (!matchSimpleStridedLoad(LI, DL, Match))
+      if (!matchSimpleStridedLoadSCEV(LI, DL, SE, TidXS, TidYS, Match))
         continue;
 
       BasicBlock *OrigBB = LI->getParent();
