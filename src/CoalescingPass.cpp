@@ -1352,6 +1352,36 @@ static void dumpIndexDef(Value *V)
   }
 }
 
+tatic SCEVAffineSummary summarizeSCEVValue(Value *V,
+                                            ScalarEvolution &SE,
+                                            const SCEV *TidXS,
+                                            const SCEV *TidYS)
+{
+  Value *NormV = stripSimpleCasts(V);
+  NormV = resolveAllocaStoredValue(NormV);
+
+  switch (getThreadVarKind(NormV))
+  {
+  case ThreadVarKind::TidX:
+  {
+    SCEVAffineSummary R;
+    R.CoeffTidX = 1;
+    return R;
+  }
+  case ThreadVarKind::TidY:
+  {
+    SCEVAffineSummary R;
+    R.CoeffTidY = 1;
+    return R;
+  }
+  case ThreadVarKind::None:
+    break;
+  }
+
+  const SCEV *S = SE.getSCEV(NormV);
+  return summarizeSCEV(S, TidXS, TidYS);
+}
+
 static void dumpSCEVInfoForIndex(ScalarEvolution &SE,
                                  const SCEV *TidXS,
                                  const SCEV *TidYS,
@@ -1461,10 +1491,7 @@ struct SCEVGEPIndexInfo
   bool HasLoopRecurrence = false;
 };
 
-static SCEVAffineSummary summarizeSCEVValue(Value *V,
-                                            ScalarEvolution &SE,
-                                            const SCEV *TidXS,
-                                            const SCEV *TidYS)
+
 {
   Value *NormV = stripSimpleCasts(V);
   NormV = resolveAllocaStoredValue(NormV);
