@@ -1050,16 +1050,39 @@ static SCEVAffineSummary summarizeSCEV(const SCEV *S,
     return R;
   }
 
-  if (isa<SCEVUnknown>(S))
+  if (auto *U = dyn_cast<SCEVUnknown>(S))
+{
+  Value *V = const_cast<Value *>(U->getValue());
+  V = stripSimpleCasts(V);
+  V = resolveAllocaStoredValue(V);
+
+  switch (getThreadVarKind(V))
   {
-    R.HasOtherSymbolic = true;
+  case ThreadVarKind::TidX:
+    R.CoeffTidX = 1;
     return R;
+  case ThreadVarKind::TidY:
+    R.CoeffTidY = 1;
+    return R;
+  case ThreadVarKind::None:
+    break;
   }
 
+  if (isa<ConstantInt>(V))
+  {
+    if (auto *CI = dyn_cast<ConstantInt>(V))
+    {
+      R.Constant = CI->getSExtValue();
+      return R;
+    }
+  }
+
+  R.HasOtherSymbolic = true;
+  return R;
+}
   R.Known = false;
   return R;
 }
-
 
 static SCEVAffineSummary summarizeSCEVValue(Value *V,
                                             ScalarEvolution &SE,
@@ -1364,10 +1387,10 @@ static void dumpSCEVInfoForIndex(ScalarEvolution &SE,
                                  Value *Idx)
 {
   Value *NormIdx = stripSimpleCasts(Idx);
-NormIdx = resolveAllocaStoredValue(NormIdx);
+  NormIdx = resolveAllocaStoredValue(NormIdx);
 
-const SCEV *S = SE.getSCEV(NormIdx);
-SCEVAffineSummary Sum = summarizeSCEVValue(Idx, SE, TidXS, TidYS);
+  const SCEV *S = SE.getSCEV(NormIdx);
+  SCEVAffineSummary Sum = summarizeSCEVValue(Idx, SE, TidXS, TidYS);
 
   outs() << "        scev=" << *S
          << " scev_coeff_tid_x=" << Sum.CoeffTidX
@@ -1926,7 +1949,6 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
             // outs() << "\n";
 
             // dumpIndexDef(Idx);
-            dumpSCEVInfoForIndex(SE, TidXS, TidYS, Idx);
           }
         }
 
