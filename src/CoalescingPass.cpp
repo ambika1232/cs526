@@ -1084,35 +1084,6 @@ static SCEVAffineSummary summarizeSCEV(const SCEV *S,
   return R;
 }
 
-static SCEVAffineSummary summarizeSCEVValue(Value *V,
-                                            ScalarEvolution &SE,
-                                            const SCEV *TidXS,
-                                            const SCEV *TidYS)
-{
-  V = stripSimpleCasts(V);
-  V = resolveAllocaStoredValue(V);
-
-  switch (getThreadVarKind(V))
-  {
-  case ThreadVarKind::TidX:
-  {
-    SCEVAffineSummary R;
-    R.CoeffTidX = 1;
-    return R;
-  }
-  case ThreadVarKind::TidY:
-  {
-    SCEVAffineSummary R;
-    R.CoeffTidY = 1;
-    return R;
-  }
-  case ThreadVarKind::None:
-    break;
-  }
-
-  return summarizeSCEV(SE.getSCEV(V), TidXS, TidYS);
-}
-
 struct WarpAccessInfo
 {
   bool Valid = false;
@@ -1769,9 +1740,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 
     errs() << "ENTER tile-remap run: " << F.getName() << "\n";
 
-    /
-
-        SmallVector<LoadInst *, 8> CandidateLoads;
+    SmallVector<LoadInst *, 8> CandidateLoads;
     for (BasicBlock &BB : F)
     {
       for (Instruction &I : BB)
@@ -1937,8 +1906,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
              << F.getName()
              << " stride_elems=" << Match.StrideElems
              << " const_elems=" << Match.ConstElems
-             << " staged_output=" << (FoundStore ? "yes" : "no")
-             << " writeback=" << (FoundStore ? "yes" : "no")
              << "\n";
 
       Changed = true;
