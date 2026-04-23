@@ -1352,7 +1352,7 @@ static void dumpIndexDef(Value *V)
   }
 }
 
-tatic SCEVAffineSummary summarizeSCEVValue(Value *V,
+static SCEVAffineSummary summarizeSCEVValue(Value *V,
                                             ScalarEvolution &SE,
                                             const SCEV *TidXS,
                                             const SCEV *TidYS)
