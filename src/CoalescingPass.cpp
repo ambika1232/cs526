@@ -1491,8 +1491,6 @@ struct SCEVGEPIndexInfo
   bool HasLoopRecurrence = false;
 };
 
-
-
 static bool summarizeSimpleGEPIndex(GetElementPtrInst *GEP,
                                     ScalarEvolution &SE,
                                     const SCEV *TidXS,
@@ -1750,8 +1748,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
         if (auto *LI = dyn_cast<LoadInst>(&I))
         {
           StridedLoadMatch Match;
-          if (matchSimpleStridedLoadSCEV(LoadI, DL, SE, TidXS, TidYS, Match))
-            CandidateLoads.push_back(LoadI);
+          if (matchSimpleStridedLoadSCEV(LI, DL, SE, TidXS, TidYS, Match))
+            CandidateLoads.push_back(LI);
         }
       }
     }
@@ -1762,8 +1760,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
         continue;
 
       StridedLoadMatch Match;
-      if (!matchSimpleStridedLoadSCEV(LI, DL, SE, TidXS, TidYS, Match))
-        continue;
+      if (matchSimpleStridedLoadSCEV(LoadI, DL, SE, TidXS, TidYS, Match))
+        CandidateLoads.push_back(LoadI);
 
       BasicBlock *OrigBB = LI->getParent();
       BasicBlock *ContBB = OrigBB->splitBasicBlock(LI, "tile.cont");
