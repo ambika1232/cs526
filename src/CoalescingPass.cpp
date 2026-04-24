@@ -1573,6 +1573,17 @@ static bool matchSimpleStridedLoadSCEV(LoadInst *LI,
   int64_t StrideElems = GI.CoeffTidX;
   int64_t ConstElems = GI.ConstantElems;
 
+  // Conservative global-bounds safety rule for now:
+  // Only transform A[stride * tid_x] starting exactly at offset 0.
+  // This avoids cases like A[4*tid_x - 3] or A[4*tid_x + c],
+  // where cooperative preload may read outside the originally valid region.
+  if (ConstElems != 0)
+  {
+    outs() << "[SCEV strided reject] nonzero const offset="
+           << ConstElems << "\n";
+    return false;
+  }
+
   if (StrideElems <= 1)
     return false;
 
@@ -1820,7 +1831,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           "tile.local",
           InsertPt);
 
-
       // // Branch to preload loop.
       // BOrig.CreateBr(HeaderBB);
       BOrig.CreateBr(HeaderBB);
@@ -1881,8 +1891,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       // Replace original strided global load with shared load.
       LI->replaceAllUsesWith(SharedLoad);
       LI->eraseFromParent();
-
-      
 
       outs() << "[TileRemapPass] remapped strided load in function="
              << F.getName()
