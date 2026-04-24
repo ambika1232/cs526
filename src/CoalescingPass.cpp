@@ -1820,13 +1820,6 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           "tile.local",
           InsertPt);
 
-      AllocaInst *OutTile = new AllocaInst(
-          Match.ElemTy,
-          3,
-          TileElems,
-          Align(4),
-          "tile.out.local",
-          InsertPt);
 
       // // Branch to preload loop.
       // BOrig.CreateBr(HeaderBB);
@@ -1889,18 +1882,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       LI->replaceAllUsesWith(SharedLoad);
       LI->eraseFromParent();
 
-      // IRBuilder<> BContAfter(ContBB);
-      IRBuilder<> BContAfter(ContBB->getTerminator());
-
-      Value *OutIdx = Lid0;
-      Value *OutTilePtr = BContAfter.CreateGEP(
-          Match.ElemTy,
-          OutTile,
-          OutIdx,
-          "tile.out.ptr");
-      BContAfter.CreateStore(SharedLoad, OutTilePtr);
-
-      createBarrier(BContAfter, *M);
+      
 
       outs() << "[TileRemapPass] remapped strided load in function="
              << F.getName()
