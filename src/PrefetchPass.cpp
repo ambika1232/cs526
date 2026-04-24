@@ -402,10 +402,7 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
         // --- Transformation phase ---
         LLVMContext &Ctx = F.getContext();
         const DataLayout &DL = F.getParent()->getDataLayout();
-        Type *I64Ty   = Type::getInt64Ty(Ctx);
-        Type *I8PtrTy = Type::getInt8PtrTy(Ctx);
-        Function *PrefetchFn = Intrinsic::getDeclaration(
-            F.getParent(), Intrinsic::prefetch, {I8PtrTy});
+        Type *I64Ty = Type::getInt64Ty(Ctx);
         bool Changed = false;
 
         for (const auto &C : Candidates) {
@@ -421,6 +418,13 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
 
             int64_t AheadElems = C.prefetchDistance * (C.strideBytes / (int64_t)ElemSize);
             Value  *Ptr        = C.loadInst->getPointerOperand();
+
+            // Match the pointer's address space so the bitcast stays within one
+            // address space (e.g. addrspace(1) for OpenCL __global on NVPTX).
+            unsigned PtrAS = cast<PointerType>(Ptr->getType())->getAddressSpace();
+            Type *I8PtrTy = Type::getInt8PtrTy(Ctx, PtrAS);
+            Function *PrefetchFn = Intrinsic::getDeclaration(
+                F.getParent(), Intrinsic::prefetch, {I8PtrTy});
 
             // Instructions inserted before C.loadInst land in the current block
             // and will remain there after any block split below.

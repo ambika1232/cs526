@@ -10,6 +10,6 @@ INPUT="$1"
 OUTPUT="$2"
 shift 2
 
-clang -x cl -cl-std=CL2.0 -Xclang -finclude-default-header -emit-llvm -S "$INPUT" -o "$OUTPUT" "$@"
+clang -x cl -cl-std=CL2.0 -O2 -Xclang -finclude-default-header -emit-llvm -S "$INPUT" -o "$OUTPUT" "$@"
 
 echo "Wrote LLVM IR to $OUTPUT"
