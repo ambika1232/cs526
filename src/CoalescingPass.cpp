@@ -1765,6 +1765,23 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       }
     }
 
+    Argument *BoundArg = nullptr;
+    for (Argument &Arg : F.args())
+    {
+      if (Arg.getType()->isIntegerTy())
+      {
+        BoundArg = &Arg;
+        break;
+      }
+    }
+
+    if (!BoundArg)
+    {
+      errs() << "[TileRemapPass] reject function without explicit bound: "
+             << F.getName() << "\n";
+      return PreservedAnalyses::all();
+    }
+
     for (LoadInst *LI : CandidateLoads)
     {
       if (!LI->getParent())
@@ -1847,7 +1864,21 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       Value *GlobalIdx = BBody.CreateAdd(DenseBase, OffPhi, "global.idx");
       Value *GlobalPtr = BBody.CreateGEP(Match.ElemTy, Match.BasePtr,
                                          GlobalIdx, "global.ptr");
-      LoadInst *Loaded = BBody.CreateLoad(Match.ElemTy, GlobalPtr, "tile.ld");
+      // LoadInst *Loaded = BBody.CreateLoad(Match.ElemTy, GlobalPtr, "tile.ld");
+      Value *Bound64 = BBody.CreateSExtOrTrunc(BoundArg, BBody.getInt64Ty(), "bound64");
+
+      Value *InBounds = BBody.CreateICmpULT(GlobalIdx, Bound64, "global.in.bounds");
+
+      Value *ZeroIdx = ConstantInt::get(BBody.getInt64Ty(), 0);
+      Value *SafeIdx = BBody.CreateSelect(InBounds, GlobalIdx, ZeroIdx, "safe.idx");
+
+      Value *SafePtr = BBody.CreateGEP(Match.ElemTy, Match.BasePtr, SafeIdx, "safe.ptr");
+
+      LoadInst *RawLoad = BBody.CreateLoad(Match.ElemTy, SafePtr, "tile.ld.raw");
+
+      Value *ZeroVal = ConstantFP::get(Match.ElemTy, 0.0);
+
+      Value *Loaded = BBody.CreateSelect(InBounds, RawLoad, ZeroVal, "tile.ld");
 
       Value *TilePtr = BBody.CreateGEP(
           Match.ElemTy,
