@@ -56,10 +56,10 @@ static bool isInterestingLoop(Loop *L) {
     return L && L->getLoopDepth() >= 1;
 }
 
-// Assumed memory latency (DRAM) and issue width used to estimate how many
-// iterations of this loop fit inside one cache-miss latency window.
-static constexpr int64_t MEM_LATENCY_CYCLES = 200;
-static constexpr int64_t ASSUMED_IPC        = 4;
+// A100 L2→HBM latency (~480 cycles at 1.41 GHz). On GPU, effective IPC per
+// warp is ~1 (warp scheduler, not superscalar), so distance ≈ latency / InstCount.
+static constexpr int64_t MEM_LATENCY_CYCLES = 480;
+static constexpr int64_t ASSUMED_IPC        = 1;
 
 static int64_t choosePrefetchDistance(Loop *L, LoopInfo &LI) {
     if (!L) return 0;
@@ -79,8 +79,8 @@ static int64_t choosePrefetchDistance(Loop *L, LoopInfo &LI) {
     // distance = ceil(MEM_LATENCY / iteration_cycles)
     //          = ceil(MEM_LATENCY * IPC / InstCount)
     int64_t D = (MEM_LATENCY_CYCLES * ASSUMED_IPC + InstCount - 1) / InstCount;
-    if (D < 1) D = 1;
-    if (D > 8) D = 8;
+    if (D < 1)  D = 1;
+    if (D > 16) D = 16;  // A100: deeper HBM latency warrants longer lookahead
     return D;
 }
 
@@ -419,10 +419,11 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
             int64_t AheadElems = C.prefetchDistance * (C.strideBytes / (int64_t)ElemSize);
             Value  *Ptr        = C.loadInst->getPointerOperand();
 
-            // Match the pointer's address space so the bitcast stays within one
-            // address space (e.g. addrspace(1) for OpenCL __global on NVPTX).
+            // llvm.prefetch always takes i8* (addrspace 0) in LLVM ≤ 11.
+            // If the pointer lives in a non-default address space (e.g. addrspace(1)
+            // for OpenCL __global on NVPTX), addrspacecast to generic first.
             unsigned PtrAS = cast<PointerType>(Ptr->getType())->getAddressSpace();
-            Type *I8PtrTy = Type::getInt8PtrTy(Ctx, PtrAS);
+            Type *I8PtrTy = Type::getInt8PtrTy(Ctx, 0);
             Function *PrefetchFn = Intrinsic::getDeclaration(
                 F.getParent(), Intrinsic::prefetch, {I8PtrTy});
 
@@ -433,7 +434,11 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
             Value *PrefetchPtr = Builder.CreateGEP(
                 ElemTy, Ptr,
                 ConstantInt::get(I64Ty, AheadElems), "prefetch.ptr");
-            Value *I8Ptr = Builder.CreateBitCast(PrefetchPtr, I8PtrTy, "prefetch.i8ptr");
+            Value *PrefetchGeneric = PtrAS != 0
+                ? Builder.CreateAddrSpaceCast(PrefetchPtr,
+                      PointerType::get(ElemTy, 0), "prefetch.generic")
+                : PrefetchPtr;
+            Value *I8Ptr = Builder.CreateBitCast(PrefetchGeneric, I8PtrTy, "prefetch.i8ptr");
 
             if (C.boundsStatus == BoundsStatus::Safe) {
                 // Static trip count proves we are in bounds — insert unconditionally.
