@@ -1,12 +1,10 @@
-# GPU Memory Coalescing Midterm Repo
+# GPU Memory Coalescing 
 
-This repository is a practical starter kit for an LLVM-based memory coalescing project targeting OpenCL kernels compiled through LLVM IR toward NVPTX. It is designed to support a midterm report even if you do **not** have access to an NVIDIA GPU.
-
-## What this repo provides
+This repository is a practical starter kit for an LLVM-based memory coalescing project targeting OpenCL kernels compiled through LLVM IR toward NVPTX.
 
 - An **LLVM new-pass-manager plugin** that scans memory accesses and classifies simple thread-dependent patterns.
 - A lightweight **warp-level coalescing estimator** based on stride and element size.
-- Example **OpenCL kernels** with coalesced and non-coalesced patterns.
+- Example **OpenCL kernels** with  coalesced and non-coalesced patterns.
 - Scripts to generate **LLVM IR** from OpenCL kernels.
 - A small Python utility to compute and print **estimated memory transactions per warp**.
 - A concise **midterm report template** that matches the current state of the project.
@@ -26,7 +24,7 @@ The current scope is intentionally realistic for a midterm:
 ## Repo layout
 
 ```text
-gpu-coalescing-midterm/
+cs526/
 ├── CMakeLists.txt
 ├── README.md
 ├── docs/
@@ -106,12 +104,6 @@ Example:
 ```bash
 bash scripts/compile_opencl_to_ll.sh kernels/strided.cl build/strided.ll
 ```
-
-Notes:
-
-- This step only generates LLVM IR.
-- You do **not** need an NVIDIA GPU for this stage.
-- Depending on your local Clang/OpenCL headers, you may need to adjust include paths.
 
 ## Run the analysis pass
 
