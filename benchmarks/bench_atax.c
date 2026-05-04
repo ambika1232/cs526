@@ -1,14 +1,12 @@
 // Single-PTX launcher for atax.cl: y = A^T * (A * x)
 // kernel1 computes tmp = A*x, kernel2 computes y = A^T*tmp.
 // kernel2 reads tmp written by kernel1 — default stream serializes them.
-// Usage: bench_atax <kernel.ptx>
+// Usage: bench_atax <kernel.ptx> [N]   (N sets NX=NY=N, default 4096)
 
 #include <cuda.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NX         4096
-#define NY         4096
 #define BLOCK_SIZE 256
 #define ITERS      20
 
@@ -32,7 +30,13 @@ static char *read_file(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) { fprintf(stderr, "Usage: %s <kernel.ptx>\n", argv[0]); return 1; }
+    if (argc < 2 || argc > 3) {
+        fprintf(stderr, "Usage: %s <kernel.ptx> [N]\n", argv[0]);
+        return 1;
+    }
+
+    int nx = (argc >= 3) ? atoi(argv[2]) : 4096;
+    int ny = nx;
 
     CHECK(cuInit(0));
     CUdevice dev; CHECK(cuDeviceGet(&dev, 0));
@@ -41,7 +45,7 @@ int main(int argc, char **argv) {
     char devname[256]; cuDeviceGetName(devname, sizeof(devname), dev);
     printf("device: %s\n", devname);
     printf("ptx:    %s\n", argv[1]);
-    printf("nx=%d ny=%d  A=%.0f MB\n\n", NX, NY, NX * NY * 4.0 / (1 << 20));
+    printf("nx=%d ny=%d  A=%.0f MB\n\n", nx, ny, nx * (double)ny * 4.0 / (1 << 20));
 
     char *ptx = read_file(argv[1]);
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
@@ -50,30 +54,26 @@ int main(int argc, char **argv) {
     CHECK(cuModuleGetFunction(&k1, mod, "__clang_ocl_kern_imp_atax_kernel1"));
     CHECK(cuModuleGetFunction(&k2, mod, "__clang_ocl_kern_imp_atax_kernel2"));
 
-    // A[NX*NY], x[NY], tmp[NX], y[NY]
+    // A[nx*ny], x[ny], tmp[nx], y[ny]
     CUdeviceptr d_A, d_x, d_tmp, d_y;
-    CHECK(cuMemAlloc(&d_A,   (size_t)NX * NY * sizeof(float)));
-    CHECK(cuMemAlloc(&d_x,   (size_t)NY * sizeof(float)));
-    CHECK(cuMemAlloc(&d_tmp, (size_t)NX * sizeof(float)));
-    CHECK(cuMemAlloc(&d_y,   (size_t)NY * sizeof(float)));
+    CHECK(cuMemAlloc(&d_A,   (size_t)nx * ny * sizeof(float)));
+    CHECK(cuMemAlloc(&d_x,   (size_t)ny * sizeof(float)));
+    CHECK(cuMemAlloc(&d_tmp, (size_t)nx * sizeof(float)));
+    CHECK(cuMemAlloc(&d_y,   (size_t)ny * sizeof(float)));
 
-    float *h = malloc((size_t)NX * NY * sizeof(float));
-    for (int i = 0; i < NX * NY; i++) h[i] = (float)(i % 256) * 0.01f;
-    CHECK(cuMemcpyHtoD(d_A, h, (size_t)NX * NY * sizeof(float)));
-    for (int i = 0; i < NY; i++) h[i] = (float)i * 0.5f;
-    CHECK(cuMemcpyHtoD(d_x, h, (size_t)NY * sizeof(float)));
+    float *h = malloc((size_t)nx * ny * sizeof(float));
+    for (int i = 0; i < nx * ny; i++) h[i] = (float)(i % 256) * 0.01f;
+    CHECK(cuMemcpyHtoD(d_A, h, (size_t)nx * ny * sizeof(float)));
+    for (int i = 0; i < ny; i++) h[i] = (float)i * 0.5f;
+    CHECK(cuMemcpyHtoD(d_x, h, (size_t)ny * sizeof(float)));
     free(h);
-    // kernel1 does tmp[i] += ..., kernel2 does y[j] += ... — zero once before warmup
-    CHECK(cuMemsetD32(d_tmp, 0, (size_t)NX));
-    CHECK(cuMemsetD32(d_y,   0, (size_t)NY));
+    CHECK(cuMemsetD32(d_tmp, 0, (size_t)nx));
+    CHECK(cuMemsetD32(d_y,   0, (size_t)ny));
 
-    int nx = NX, ny = NY;
-    // kernel1: (A, x, tmp, nx, ny)  grid over NX
-    unsigned g1 = (NX + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    unsigned g1 = (nx + BLOCK_SIZE - 1) / BLOCK_SIZE;
     void *args1[] = { &d_A, &d_x, &d_tmp, &nx, &ny };
 
-    // kernel2: (A, y, tmp, nx, ny)  grid over NY
-    unsigned g2 = (NY + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    unsigned g2 = (ny + BLOCK_SIZE - 1) / BLOCK_SIZE;
     void *args2[] = { &d_A, &d_y, &d_tmp, &nx, &ny };
 
     // Warmup

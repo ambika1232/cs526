@@ -1,14 +1,11 @@
 // Single-PTX launcher for gemm.cl: C = alpha*A*B + beta*C
-// Usage: bench_gemm <kernel.ptx>
-// nsys: nsys profile -o report ./bench_gemm kernel.ptx
+// Usage: bench_gemm <kernel.ptx> [N]   (N sets NI=NJ=NK=N, default 4096)
+// nsys: nsys profile -o report ./bench_gemm kernel.ptx [N]
 
 #include <cuda.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NI         1024
-#define NJ         1024
-#define NK         1024
 #define BLOCK_DIM  16
 #define ITERS      20
 
@@ -32,7 +29,13 @@ static char *read_file(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) { fprintf(stderr, "Usage: %s <kernel.ptx>\n", argv[0]); return 1; }
+    if (argc < 2 || argc > 3) {
+        fprintf(stderr, "Usage: %s <kernel.ptx> [N]\n", argv[0]);
+        return 1;
+    }
+
+    int n = (argc >= 3) ? atoi(argv[2]) : 4096;
+    int ni = n, nj = n, nk = n;
 
     CHECK(cuInit(0));
     CUdevice dev; CHECK(cuDeviceGet(&dev, 0));
@@ -42,7 +45,7 @@ int main(int argc, char **argv) {
     printf("device: %s\n", devname);
     printf("ptx:    %s\n", argv[1]);
     printf("ni=%d nj=%d nk=%d (%.0f MB/matrix)\n\n",
-           NI, NJ, NK, NI * NJ * 4.0 / (1 << 20));
+           ni, nj, nk, ni * (double)nj * 4.0 / (1 << 20));
 
     char *ptx = read_file(argv[1]);
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
@@ -51,25 +54,22 @@ int main(int argc, char **argv) {
     CHECK(cuModuleGetFunction(&fn, mod, "__clang_ocl_kern_imp_gemm"));
 
     CUdeviceptr d_a, d_b, d_c;
-    CHECK(cuMemAlloc(&d_a, (size_t)NI * NK * sizeof(float)));
-    CHECK(cuMemAlloc(&d_b, (size_t)NK * NJ * sizeof(float)));
-    CHECK(cuMemAlloc(&d_c, (size_t)NI * NJ * sizeof(float)));
+    CHECK(cuMemAlloc(&d_a, (size_t)ni * nk * sizeof(float)));
+    CHECK(cuMemAlloc(&d_b, (size_t)nk * nj * sizeof(float)));
+    CHECK(cuMemAlloc(&d_c, (size_t)ni * nj * sizeof(float)));
 
-    // NI*NJ is the largest allocation — use it for all init passes
-    float *h = malloc((size_t)NI * NJ * sizeof(float));
-    for (int i = 0; i < NI * NK; i++) h[i] = (float)(i % 256) * 0.01f;
-    CHECK(cuMemcpyHtoD(d_a, h, (size_t)NI * NK * sizeof(float)));
-    for (int i = 0; i < NK * NJ; i++) h[i] = (float)(i % 256) * 0.01f;
-    CHECK(cuMemcpyHtoD(d_b, h, (size_t)NK * NJ * sizeof(float)));
-    for (int i = 0; i < NI * NJ; i++) h[i] = 1.0f;
-    CHECK(cuMemcpyHtoD(d_c, h, (size_t)NI * NJ * sizeof(float)));
+    float *h = malloc((size_t)n * n * sizeof(float));
+    for (int i = 0; i < ni * nk; i++) h[i] = (float)(i % 256) * 0.01f;
+    CHECK(cuMemcpyHtoD(d_a, h, (size_t)ni * nk * sizeof(float)));
+    for (int i = 0; i < nk * nj; i++) h[i] = (float)(i % 256) * 0.01f;
+    CHECK(cuMemcpyHtoD(d_b, h, (size_t)nk * nj * sizeof(float)));
+    for (int i = 0; i < ni * nj; i++) h[i] = 1.0f;
+    CHECK(cuMemcpyHtoD(d_c, h, (size_t)ni * nj * sizeof(float)));
     free(h);
 
     float alpha = 1.5f, beta = 1.2f;
-    int ni = NI, nj = NJ, nk = NK;
-    // get_global_id(0)=j (columns), get_global_id(1)=i (rows)
-    unsigned gridX = (NJ + BLOCK_DIM - 1) / BLOCK_DIM;
-    unsigned gridY = (NI + BLOCK_DIM - 1) / BLOCK_DIM;
+    unsigned gridX = (nj + BLOCK_DIM - 1) / BLOCK_DIM;
+    unsigned gridY = (ni + BLOCK_DIM - 1) / BLOCK_DIM;
     void *args[] = { &d_a, &d_b, &d_c, &alpha, &beta, &ni, &nj, &nk };
 
     CHECK(cuLaunchKernel(fn, gridX, gridY, 1, BLOCK_DIM, BLOCK_DIM, 1, 0, NULL, args, NULL));

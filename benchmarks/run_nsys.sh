@@ -2,17 +2,21 @@
 # Runs nsys profiling for all major kernels (base/hint/pipeline variants).
 # Outputs .nsys-rep files to benchmarks/reports/.
 #
-# Usage: bash run_nsys.sh [sm_target] [ptx_dir]
-#   sm_target  — e.g. sm_75 (default) or sm_80
+# Usage: bash run_nsys.sh [sm_target] [ptx_dir] [N]
+#   sm_target  — e.g. sm_75 (default) or sm_89
 #   ptx_dir    — directory containing the PTX files (default: ../build/bench)
+#   N          — matrix dimension NxN (default: 4096); use larger values (e.g. 8192)
+#                to exceed L2 cache on GPUs with large L2 (e.g. L40S has 96MB L2;
+#                atax/bicg working set = N^2*4 bytes, needs N>5017 to spill from L2)
 #
 # Example (from benchmarks/):
-#   bash run_nsys.sh sm_75 ../build/bench
+#   bash run_nsys.sh sm_89 ./ptx_files 8192
 
 set -euo pipefail
 
 SM="${1:-sm_75}"
 PTX_DIR="${2:-../build/bench}"
+N="${3:-4096}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPORTS="$SCRIPT_DIR/reports"
 
@@ -35,9 +39,9 @@ for KERNEL in "${KERNELS[@]}"; do
             continue
         fi
 
-        REPORT="$REPORTS/report_${KERNEL}_${VARIANT}"
-        echo "==> nsys profile: ${KERNEL} / ${VARIANT}"
-        nsys profile -o "$REPORT" "$BENCH" "$PTX"
+        REPORT="$REPORTS/report_${KERNEL}_${VARIANT}_N${N}"
+        echo "==> nsys profile: ${KERNEL} / ${VARIANT} (N=${N})"
+        nsys profile -o "$REPORT" "$BENCH" "$PTX" "$N"
         echo "    -> $REPORT.nsys-rep"
     done
 done
@@ -48,6 +52,6 @@ echo ""
 echo "To view results:"
 for KERNEL in "${KERNELS[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        echo "  nsys stats $REPORTS/report_${KERNEL}_${VARIANT}.nsys-rep 2>&1 | grep -A 15 'CUDA GPU Kernel Summary'"
+        echo "  nsys stats $REPORTS/report_${KERNEL}_${VARIANT}_N${N}.nsys-rep 2>&1 | grep -A 15 'CUDA GPU Kernel Summary'"
     done
 done

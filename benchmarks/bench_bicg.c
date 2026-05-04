@@ -1,14 +1,12 @@
 // Single-PTX launcher for bicg.cl: q = A*p  and  s = A^T*r
 // The two kernels are independent (disjoint outputs) but share A.
 // Launched sequentially on the default stream for simplicity.
-// Usage: bench_bicg <kernel.ptx>
+// Usage: bench_bicg <kernel.ptx> [N]   (N sets NX=NY=N, default 4096)
 
 #include <cuda.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NX         4096
-#define NY         4096
 #define BLOCK_SIZE 256
 #define ITERS      20
 
@@ -32,7 +30,13 @@ static char *read_file(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) { fprintf(stderr, "Usage: %s <kernel.ptx>\n", argv[0]); return 1; }
+    if (argc < 2 || argc > 3) {
+        fprintf(stderr, "Usage: %s <kernel.ptx> [N]\n", argv[0]);
+        return 1;
+    }
+
+    int nx = (argc >= 3) ? atoi(argv[2]) : 4096;
+    int ny = nx;
 
     CHECK(cuInit(0));
     CUdevice dev; CHECK(cuDeviceGet(&dev, 0));
@@ -41,7 +45,7 @@ int main(int argc, char **argv) {
     char devname[256]; cuDeviceGetName(devname, sizeof(devname), dev);
     printf("device: %s\n", devname);
     printf("ptx:    %s\n", argv[1]);
-    printf("nx=%d ny=%d  A=%.0f MB\n\n", NX, NY, NX * NY * 4.0 / (1 << 20));
+    printf("nx=%d ny=%d  A=%.0f MB\n\n", nx, ny, nx * (double)ny * 4.0 / (1 << 20));
 
     char *ptx = read_file(argv[1]);
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
@@ -50,31 +54,27 @@ int main(int argc, char **argv) {
     CHECK(cuModuleGetFunction(&k1, mod, "__clang_ocl_kern_imp_bicgKernel1"));
     CHECK(cuModuleGetFunction(&k2, mod, "__clang_ocl_kern_imp_bicgKernel2"));
 
-    // A[NX*NY], p[NY], q[NX], r[NX], s[NY]
+    // A[nx*ny], p[ny], q[nx], r[nx], s[ny]
     CUdeviceptr d_A, d_p, d_q, d_r, d_s;
-    CHECK(cuMemAlloc(&d_A, (size_t)NX * NY * sizeof(float)));
-    CHECK(cuMemAlloc(&d_p, (size_t)NY * sizeof(float)));
-    CHECK(cuMemAlloc(&d_q, (size_t)NX * sizeof(float)));
-    CHECK(cuMemAlloc(&d_r, (size_t)NX * sizeof(float)));
-    CHECK(cuMemAlloc(&d_s, (size_t)NY * sizeof(float)));
+    CHECK(cuMemAlloc(&d_A, (size_t)nx * ny * sizeof(float)));
+    CHECK(cuMemAlloc(&d_p, (size_t)ny * sizeof(float)));
+    CHECK(cuMemAlloc(&d_q, (size_t)nx * sizeof(float)));
+    CHECK(cuMemAlloc(&d_r, (size_t)nx * sizeof(float)));
+    CHECK(cuMemAlloc(&d_s, (size_t)ny * sizeof(float)));
 
-    float *h = malloc((size_t)NX * NY * sizeof(float));
-    for (int i = 0; i < NX * NY; i++) h[i] = (float)(i % 256) * 0.01f;
-    CHECK(cuMemcpyHtoD(d_A, h, (size_t)NX * NY * sizeof(float)));
-    for (int i = 0; i < NY; i++) h[i] = (float)i * 0.5f;
-    CHECK(cuMemcpyHtoD(d_p, h, (size_t)NY * sizeof(float)));
-    for (int i = 0; i < NX; i++) h[i] = (float)i * 0.5f;
-    CHECK(cuMemcpyHtoD(d_r, h, (size_t)NX * sizeof(float)));
+    float *h = malloc((size_t)nx * ny * sizeof(float));
+    for (int i = 0; i < nx * ny; i++) h[i] = (float)(i % 256) * 0.01f;
+    CHECK(cuMemcpyHtoD(d_A, h, (size_t)nx * ny * sizeof(float)));
+    for (int i = 0; i < ny; i++) h[i] = (float)i * 0.5f;
+    CHECK(cuMemcpyHtoD(d_p, h, (size_t)ny * sizeof(float)));
+    for (int i = 0; i < nx; i++) h[i] = (float)i * 0.5f;
+    CHECK(cuMemcpyHtoD(d_r, h, (size_t)nx * sizeof(float)));
     free(h);
-    // bicgKernel1 sets q[i]=0 internally; bicgKernel2 sets s[j]=0 internally — no pre-zero needed
 
-    int nx = NX, ny = NY;
-    // kernel1: (A, p, q, nx, ny)  grid over NX
-    unsigned g1 = (NX + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    unsigned g1 = (nx + BLOCK_SIZE - 1) / BLOCK_SIZE;
     void *args1[] = { &d_A, &d_p, &d_q, &nx, &ny };
 
-    // kernel2: (A, r, s, nx, ny)  grid over NY
-    unsigned g2 = (NY + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    unsigned g2 = (ny + BLOCK_SIZE - 1) / BLOCK_SIZE;
     void *args2[] = { &d_A, &d_r, &d_s, &nx, &ny };
 
     // Warmup
