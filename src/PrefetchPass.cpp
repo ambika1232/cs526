@@ -245,9 +245,11 @@ static Value *findLoopBound(Loop *L) {
     if (!Cmp) return nullptr;
 
     // "i < N" / "i <= N" / unsigned variants — bound is the RHS operand.
+    // "i == N" (ascending loop that exits at equality) — bound is also RHS.
     ICmpInst::Predicate P = Cmp->getPredicate();
     if (P == ICmpInst::ICMP_SLT || P == ICmpInst::ICMP_SLE ||
-        P == ICmpInst::ICMP_ULT || P == ICmpInst::ICMP_ULE)
+        P == ICmpInst::ICMP_ULT || P == ICmpInst::ICMP_ULE ||
+        P == ICmpInst::ICMP_EQ)
         return Cmp->getOperand(1);
 
     return nullptr;
@@ -573,6 +575,14 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
             uint64_t ElemSize = DL.getTypeAllocSize(ElemTy);
             if (ElemSize == 0) continue;
 
+            // Resolve the loop bound before emitting any IR — avoids dead
+            // instructions if findLoopBound can't handle the loop's exit form.
+            Value *Bound = nullptr;
+            if (C.boundsStatus == BoundsStatus::NeedsRuntimeGuard) {
+                Bound = findLoopBound(C.loop);
+                if (!Bound) continue;
+            }
+
             Value *Ptr = C.loadInst->getPointerOperand();
             IRBuilder<> Builder(C.loadInst);
 
@@ -611,10 +621,7 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
                        << (C.strideSCEV ? " stride=symbolic" : "") << "\n";
                 Changed = true;
 
-            } else { // NeedsRuntimeGuard
-                Value *Bound = findLoopBound(C.loop);
-                if (!Bound) continue;
-
+            } else { // NeedsRuntimeGuard — Bound already validated above
                 Value *BaseAddr   = Builder.CreatePtrToInt(
                     getUnderlyingBasePointer(Ptr), I64Ty, "prefetch.base");
                 Value *ByteOffset = Builder.CreateSub(PrefetchAddr, BaseAddr,
