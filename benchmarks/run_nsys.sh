@@ -22,13 +22,21 @@ REPORTS="$SCRIPT_DIR/reports"
 
 mkdir -p "$REPORTS"
 
+# Recompile all bench harnesses to pick up any source changes (e.g. new N argument)
+echo "==> Recompiling bench harnesses..."
+for SRC in "$SCRIPT_DIR"/bench_*.c; do
+    BIN="${SRC%.c}"
+    gcc "$SRC" -o "$BIN" -lcuda -I"$CUDA_HOME/include" -L"$CUDA_HOME/lib64/stubs" -ldl
+    echo "    compiled $(basename "$BIN")"
+done
+
 KERNELS=(gemm atax bicg 2mm 3mm)
 VARIANTS=(base hint pipeline)
 
 for KERNEL in "${KERNELS[@]}"; do
     BENCH="$SCRIPT_DIR/bench_${KERNEL}"
     if [[ ! -x "$BENCH" ]]; then
-        echo "SKIP $KERNEL — bench_${KERNEL} not built (run: make bench_${KERNEL})"
+        echo "SKIP $KERNEL — bench_${KERNEL} not built"
         continue
     fi
 
