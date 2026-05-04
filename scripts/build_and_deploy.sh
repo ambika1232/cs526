@@ -15,7 +15,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER_DEST="tamirb2@cc-login.campuscluster.illinois.edu:~/scratch/tamirb2/cs526/benchmarks/ptx_files/"
 # --------------------
 
-KERNELS=(gemm atax bicg 2mm 3mm)
+KERNELS=(gemm atax bicg 2mm 3mm mvt syrk syr2k gesummv)
 
 echo "==> Building LLVM plugin"
 bash "$ROOT/scripts/build_plugin.sh"
@@ -53,11 +53,8 @@ scp "${PTX_FILES[@]}" "$CLUSTER_DEST"
 echo ""
 echo "Done. On the cluster, rebuild bench binaries if needed:"
 echo "  module load cuda"
-echo "  gcc bench_atax.c  -o bench_atax  -lcuda -I\$CUDA_HOME/include -L\$CUDA_HOME/lib64/stubs -ldl"
-echo "  gcc bench_gemm.c  -o bench_gemm  -lcuda -I\$CUDA_HOME/include -L\$CUDA_HOME/lib64/stubs -ldl"
-echo "  gcc bench_2mm.c   -o bench_2mm   -lcuda -I\$CUDA_HOME/include -L\$CUDA_HOME/lib64/stubs -ldl"
-echo "  gcc bench_3mm.c   -o bench_3mm   -lcuda -I\$CUDA_HOME/include -L\$CUDA_HOME/lib64/stubs -ldl"
-echo "  gcc bench_bicg.c  -o bench_bicg  -lcuda -I\$CUDA_HOME/include -L\$CUDA_HOME/lib64/stubs -ldl"
+echo "  for f in bench_*.c; do gcc \$f -o \${f%.c} -lcuda -I\$CUDA_HOME/include -L\$CUDA_HOME/lib64/stubs -ldl; done"
+echo "  (or just let run_nsys.sh recompile them automatically)"
 echo ""
 echo "Then profile with:"
 echo "  bash run_nsys.sh $SM ."

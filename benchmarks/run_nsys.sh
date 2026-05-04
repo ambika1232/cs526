@@ -31,7 +31,7 @@ for SRC in "$SCRIPT_DIR"/bench_*.c; do
     echo "    compiled $(basename "$BIN")"
 done
 
-KERNELS=(gemm atax bicg 2mm 3mm)
+KERNELS=(gemm atax bicg 2mm 3mm mvt syrk syr2k gesummv)
 VARIANTS=(base hint pipeline)
 
 for KERNEL in "${KERNELS[@]}"; do
@@ -50,7 +50,7 @@ for KERNEL in "${KERNELS[@]}"; do
 
         REPORT="$REPORTS/report_${KERNEL}_${VARIANT}_N${N}"
         echo "==> nsys profile: ${KERNEL} / ${VARIANT} (N=${N})"
-        nsys profile -o "$REPORT" "$BENCH" "$PTX" "$N"
+        nsys profile --force-overwrite true -o "$REPORT" "$BENCH" "$PTX" "$N"
         echo "    -> $REPORT.nsys-rep"
     done
 done
