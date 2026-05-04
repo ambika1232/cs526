@@ -23,10 +23,11 @@ REPORTS="$SCRIPT_DIR/reports"
 mkdir -p "$REPORTS"
 
 # Recompile all bench harnesses to pick up any source changes (e.g. new N argument)
-echo "==> Recompiling bench harnesses..."
+CUDA_ROOT="${CUDA_HOME:-${CUDA_PATH:-$(dirname "$(dirname "$(which nvcc)")")}}"
+echo "==> Recompiling bench harnesses (CUDA: $CUDA_ROOT)..."
 for SRC in "$SCRIPT_DIR"/bench_*.c; do
     BIN="${SRC%.c}"
-    gcc "$SRC" -o "$BIN" -lcuda -I"$CUDA_HOME/include" -L"$CUDA_HOME/lib64/stubs" -ldl
+    gcc "$SRC" -o "$BIN" -lcuda -I"$CUDA_ROOT/include" -L"$CUDA_ROOT/lib64/stubs" -ldl
     echo "    compiled $(basename "$BIN")"
 done
 
