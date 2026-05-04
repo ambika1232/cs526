@@ -4,7 +4,7 @@
 #include <string>
 #include <set>
 
-namespace llvm { class LoadInst; class Loop; }
+namespace llvm { class LoadInst; class Loop; class Value; class SCEV; }
 
 namespace prefetching {
 
@@ -43,7 +43,8 @@ struct PrefetchCandidateInfo {
     bool loopVariant = false;
     int64_t prefetchDistance = 0;
     BoundsStatus boundsStatus = BoundsStatus::NotApplicable;
-    int64_t strideBytes = 0;         // 0 = unknown; extracted from AddRec step
+    int64_t strideBytes = 0;              // non-zero when stride is a compile-time constant
+    const llvm::SCEV *strideSCEV = nullptr; // non-null when stride is a runtime expression
     PrefetchBenefit benefit = PrefetchBenefit::Unknown;
     llvm::LoadInst *loadInst = nullptr; // owning load; used by the transform phase
     llvm::Loop     *loop     = nullptr; // enclosing loop; used to find the bound

@@ -9,6 +9,8 @@ mkdir -p "$BUILD_DIR"
 
 if [[ -n "$LLVM_ROOT" ]]; then
   LLVM_DIR="$LLVM_ROOT/lib/cmake/llvm"
+elif command -v llvm-config-21 >/dev/null 2>&1; then
+  LLVM_DIR="$(llvm-config-21 --cmakedir)"
 elif command -v llvm-config >/dev/null 2>&1; then
   LLVM_DIR="$(llvm-config --cmakedir)"
 else

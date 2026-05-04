@@ -8,9 +8,10 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Transforms/Utils/ScalarEvolutionExpander.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
@@ -315,17 +316,22 @@ static void analyzeLoopRecursive(Loop *L,
                     }
                     if (auto *AR = dyn_cast<SCEVAddRecExpr>(Inner)) {
                         if (AR->isAffine()) {
-                            if (auto *SC = dyn_cast<SCEVConstant>(AR->getStepRecurrence(SE)))
+                            const SCEV *Step = AR->getStepRecurrence(SE);
+                            if (auto *SC = dyn_cast<SCEVConstant>(Step))
                                 Info.strideBytes = SC->getValue()->getSExtValue();
+                            else
+                                Info.strideSCEV = Step; // runtime stride (e.g. B[k*nj+j])
                         }
                     }
 
-                    // Classify benefit based on stride vs. cache line size (64 B).
-                    // A prefetch warms one cache line; smaller strides mean one
-                    // prefetch covers more iterations.
+                    // Classify benefit. Symbolic stride (e.g. column-stride B[k*nj+j])
+                    // gets Unknown since we can't know the value statically, but it is
+                    // still a valid prefetch candidate and will be transformed.
                     int64_t AbsStride = Info.strideBytes < 0
                                         ? -Info.strideBytes : Info.strideBytes;
-                    if (AbsStride == 0)
+                    if (Info.strideSCEV)
+                        Info.benefit = PrefetchBenefit::Unknown;
+                    else if (AbsStride == 0)
                         Info.benefit = PrefetchBenefit::Unknown;
                     else if (AbsStride <= 64)
                         Info.benefit = PrefetchBenefit::High;
@@ -347,7 +353,138 @@ static void analyzeLoopRecursive(Loop *L,
         analyzeLoopRecursive(SubL, LI, SE, Out);
 }
 
+enum class PrefetchMode { Hint, Pipeline };
+
+// Software-pipeline a candidate load: move its data one iteration earlier by
+// loading into a register in the previous iteration, then using that register
+// value in the current one.  This is the paper's §3.6 register-prefetch pattern.
+//
+// Transformation sketch (single-block loop):
+//
+//   preheader:  prolog_val = load(ptr @ iter 0)         ; NEW
+//   header:     val.cur = phi [prolog_val, ph], [val.next, next_load_bb]  ; NEW
+//               ... existing PHIs updated: Latch → NextLoadBB ...
+//   body:       ... val.cur used in place of original load ...
+//   latch:      cond = (i+1 < N)
+//               br cond, next_load_bb, exit             ; true edge redirected
+//
+//   next_load_bb:                                        ; NEW
+//               next_ptr = gep(LoadPtr, stride_elems)
+//               val.next = load(next_ptr)
+//               br header
+//
+// Restrictions: constant stride only, single preheader + latch.
+static bool tryInsertSoftwarePipeline(const PrefetchCandidateInfo &C,
+                                       ScalarEvolution &SE,
+                                       const DataLayout &DL,
+                                       SCEVExpander &Expander) {
+    if (!C.loadInst || !C.loop) return false;
+    if (C.strideBytes == 0 || C.strideSCEV) return false; // constant stride only
+
+    Loop *L             = C.loop;
+    BasicBlock *Preheader = L->getLoopPreheader();
+    BasicBlock *Header    = L->getHeader();
+    BasicBlock *Latch     = L->getLoopLatch();
+    if (!Preheader || !Latch || !Header) return false;
+
+    auto *LatchBI = dyn_cast<BranchInst>(Latch->getTerminator());
+    if (!LatchBI || !LatchBI->isConditional()) return false;
+
+    // Which successor of Latch is the back-edge to Header?
+    int HeaderSuccIdx = -1;
+    for (unsigned i = 0; i < LatchBI->getNumSuccessors(); ++i)
+        if (LatchBI->getSuccessor(i) == Header) { HeaderSuccIdx = (int)i; break; }
+    if (HeaderSuccIdx == -1) return false;
+
+    LoadInst *LI      = C.loadInst;
+    Type     *ElemTy  = LI->getType();
+    uint64_t  ElemSize = DL.getTypeAllocSize(ElemTy);
+    if (ElemSize == 0) return false;
+    if (C.strideBytes % (int64_t)ElemSize != 0) return false;
+    int64_t StrideElems = C.strideBytes / (int64_t)ElemSize;
+
+    LLVMContext &Ctx  = LI->getContext();
+    Type        *I64Ty = Type::getInt64Ty(Ctx);
+    Value *LoadPtr    = LI->getPointerOperand();
+
+    // --- All preconditions satisfied.  Begin IR modifications. ---
+
+    // Step 1: Prolog load in the preheader (value for iteration 0).
+    //
+    // Expanding the full PtrSCEV ({start,+,stride}) can cause SCEVExpander to
+    // introduce a new loop counter PHI and its LCSSA form in the exit block,
+    // then reference the LCSSA value in the preheader — a forward-use that
+    // breaks SSA dominance.  Instead we expand only AR->getStart(), which is
+    // by construction loop-invariant: the expander will never insert loop PHIs
+    // for it and all referenced values are available before the loop.
+    const SCEV *PtrSCEV = SE.getSCEV(LoadPtr);
+
+    // Peel extensions to reach the affine AddRec (same as analysis phase).
+    const SCEV *Inner = PtrSCEV;
+    while (true) {
+        if (auto *Z = dyn_cast<SCEVZeroExtendExpr>(Inner)) { Inner = Z->getOperand(); continue; }
+        if (auto *S = dyn_cast<SCEVSignExtendExpr>(Inner)) { Inner = S->getOperand(); continue; }
+        if (auto *T = dyn_cast<SCEVTruncateExpr>(Inner))   { Inner = T->getOperand(); continue; }
+        break;
+    }
+    auto *AR = dyn_cast<SCEVAddRecExpr>(Inner);
+    if (!AR || !AR->isAffine() || AR->getLoop() != L) return false;
+
+    const SCEV *StartSCEV = AR->getStart(); // loop-invariant by definition
+    Type  *SCEVTy         = StartSCEV->getType();
+    Instruction *PreTerm  = Preheader->getTerminator();
+
+    Value *PrologPtrVal;
+    if (SCEVTy->isPointerTy()) {
+        PrologPtrVal = Expander.expandCodeFor(StartSCEV, SCEVTy, PreTerm);
+    } else {
+        // SCEV is an integer byte address — expand then inttoptr.
+        Value *AddrInt = Expander.expandCodeFor(StartSCEV, SCEVTy, PreTerm);
+        IRBuilder<> B(PreTerm);
+        PrologPtrVal = B.CreateIntToPtr(AddrInt, LoadPtr->getType(), "pipeline.prolog_ptr");
+    }
+
+    IRBuilder<> PreBuilder(PreTerm);
+    LoadInst *PrologLoad = PreBuilder.CreateLoad(ElemTy, PrologPtrVal, "pipeline.prolog");
+    PrologLoad->setAlignment(LI->getAlign());
+
+    // Step 2: Create NextLoadBB and redirect the latch's back-edge through it.
+    Function   *F         = Header->getParent();
+    BasicBlock *NextLoadBB = BasicBlock::Create(Ctx, "pipeline.next_load", F, Header);
+    LatchBI->setSuccessor(HeaderSuccIdx, NextLoadBB);
+
+    // Step 3: In NextLoadBB, load the next iteration's value and branch to header.
+    IRBuilder<> NLB(NextLoadBB);
+    Value *NextPtr = NLB.CreateGEP(ElemTy, LoadPtr,
+                                    ConstantInt::get(I64Ty, StrideElems),
+                                    "pipeline.next_ptr");
+    LoadInst *NextLoad = NLB.CreateLoad(ElemTy, NextPtr, "pipeline.next_val");
+    NextLoad->setAlignment(LI->getAlign());
+    NLB.CreateBr(Header);
+
+    // Step 4: Fix existing header PHIs — their Latch incoming is now from NextLoadBB.
+    for (PHINode &PN : Header->phis())
+        PN.replaceIncomingBlockWith(Latch, NextLoadBB);
+
+    // Step 5: Insert new PHI carrying the pre-loaded value.
+    PHINode *ValPHI = PHINode::Create(ElemTy, 2, "pipeline.cur");
+    ValPHI->insertBefore(*Header, Header->getFirstNonPHIIt());
+    ValPHI->addIncoming(PrologLoad, Preheader);
+    ValPHI->addIncoming(NextLoad, NextLoadBB);
+
+    // Step 6: Replace original load uses and erase it.
+    LI->replaceAllUsesWith(ValPHI);
+    LI->eraseFromParent();
+
+    errs() << "[PrefetchPass] software-pipeline inserted: base=" << C.baseText
+           << " stride_elems=" << StrideElems << "\n";
+    return true;
+}
+
 struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
+    PrefetchMode Mode;
+    explicit PrefetchPass(PrefetchMode M = PrefetchMode::Hint) : Mode(M) {}
+
     PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM) {
         auto &LI = AM.getResult<LoopAnalysis>(F);
         auto &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
@@ -392,6 +529,8 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
                        << " benefit=" << benefit;
                 if (C.strideBytes != 0)
                     errs() << " stride_bytes=" << C.strideBytes;
+                else if (C.strideSCEV)
+                    errs() << " stride=symbolic";
             } else {
                 errs() << " candidate=no";
             }
@@ -405,85 +544,117 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
         Type *I64Ty = Type::getInt64Ty(Ctx);
         bool Changed = false;
 
+        SCEVExpander Expander(SE, DL, "prefetch");
+
+        if (Mode == PrefetchMode::Pipeline) {
+            for (const auto &C : Candidates) {
+                if (C.prefetchDistance == 0) continue;
+                if (!C.affine || !C.loopVariant)  continue;
+                Changed |= tryInsertSoftwarePipeline(C, SE, DL, Expander);
+            }
+            return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+        }
+
+        // Hint mode: PTX inline asm emits a real L2 prefetch instruction.
+        // llvm.prefetch is silently dropped by the NVPTX backend; this is not.
+        // Constraint "l" = 64-bit integer register; [$0+0] = address operand.
+        FunctionType *AsmFTy = FunctionType::get(Type::getVoidTy(Ctx), {I64Ty}, false);
+        InlineAsm *PrefetchAsm = InlineAsm::get(
+            AsmFTy, "prefetch.global.L2 [$0+0];", "l", /*hasSideEffects=*/true);
+
         for (const auto &C : Candidates) {
             if (C.prefetchDistance == 0) continue;
-            if (C.strideBytes == 0)      continue;
+            if (C.strideBytes == 0 && !C.strideSCEV) continue;
             if (!C.loadInst || !C.loop)  continue;
             if (C.boundsStatus == BoundsStatus::Unsafe ||
                 C.boundsStatus == BoundsStatus::NotApplicable) continue;
 
             Type    *ElemTy  = C.loadInst->getType();
             uint64_t ElemSize = DL.getTypeAllocSize(ElemTy);
-            if (ElemSize == 0 || C.strideBytes % (int64_t)ElemSize != 0) continue;
+            if (ElemSize == 0) continue;
 
-            int64_t AheadElems = C.prefetchDistance * (C.strideBytes / (int64_t)ElemSize);
-            Value  *Ptr        = C.loadInst->getPointerOperand();
-
-            // llvm.prefetch always takes i8* (addrspace 0) in LLVM ≤ 11.
-            // If the pointer lives in a non-default address space (e.g. addrspace(1)
-            // for OpenCL __global on NVPTX), addrspacecast to generic first.
-            unsigned PtrAS = cast<PointerType>(Ptr->getType())->getAddressSpace();
-            Type *I8PtrTy = Type::getInt8PtrTy(Ctx, 0);
-            Function *PrefetchFn = Intrinsic::getDeclaration(
-                F.getParent(), Intrinsic::prefetch, {I8PtrTy});
-
-            // Instructions inserted before C.loadInst land in the current block
-            // and will remain there after any block split below.
+            Value *Ptr = C.loadInst->getPointerOperand();
             IRBuilder<> Builder(C.loadInst);
 
-            Value *PrefetchPtr = Builder.CreateGEP(
-                ElemTy, Ptr,
-                ConstantInt::get(I64Ty, AheadElems), "prefetch.ptr");
-            Value *PrefetchGeneric = PtrAS != 0
-                ? Builder.CreateAddrSpaceCast(PrefetchPtr,
-                      PointerType::get(ElemTy, 0), "prefetch.generic")
-                : PrefetchPtr;
-            Value *I8Ptr = Builder.CreateBitCast(PrefetchGeneric, I8PtrTy, "prefetch.i8ptr");
+            // Compute the prefetch address and (for bounds check) the step in bytes.
+            Value *PrefetchAddr  = nullptr;
+            Value *StepBytesVal  = nullptr; // non-null for symbolic stride
+
+            if (C.strideBytes != 0) {
+                // Constant stride: simple element-count GEP.
+                if (C.strideBytes % (int64_t)ElemSize != 0) continue;
+                int64_t AheadElems = C.prefetchDistance * (C.strideBytes / (int64_t)ElemSize);
+                Value *PrefetchPtr = Builder.CreateGEP(
+                    ElemTy, Ptr, ConstantInt::get(I64Ty, AheadElems), "prefetch.ptr");
+                PrefetchAddr = Builder.CreatePtrToInt(PrefetchPtr, I64Ty, "prefetch.addr");
+            } else {
+                // Symbolic stride (e.g. B[k*nj+j] where nj is a runtime parameter).
+                // Expand the SCEV step to a Value at the loop preheader so it is
+                // computed once per kernel invocation, not once per loop iteration.
+                BasicBlock *Preheader = C.loop->getLoopPreheader();
+                if (!Preheader) continue;
+
+                StepBytesVal = Expander.expandCodeFor(
+                    C.strideSCEV, I64Ty, Preheader->getTerminator());
+
+                Value *AheadBytes = Builder.CreateMul(
+                    StepBytesVal, ConstantInt::get(I64Ty, C.prefetchDistance),
+                    "prefetch.ahead_bytes");
+                Value *PtrInt = Builder.CreatePtrToInt(Ptr, I64Ty, "prefetch.ptr_int");
+                PrefetchAddr = Builder.CreateAdd(PtrInt, AheadBytes, "prefetch.addr");
+            }
 
             if (C.boundsStatus == BoundsStatus::Safe) {
-                // Static trip count proves we are in bounds — insert unconditionally.
-                Builder.CreateCall(PrefetchFn,
-                    {I8Ptr, Builder.getInt32(0), Builder.getInt32(3), Builder.getInt32(1)});
+                Builder.CreateCall(PrefetchAsm, {PrefetchAddr});
                 errs() << "[PrefetchPass] inserted prefetch (safe): base=" << C.baseText
-                       << " ahead_elems=" << AheadElems << "\n";
+                       << " distance=" << C.prefetchDistance
+                       << (C.strideSCEV ? " stride=symbolic" : "") << "\n";
                 Changed = true;
 
             } else { // NeedsRuntimeGuard
                 Value *Bound = findLoopBound(C.loop);
-                if (!Bound) continue; // can't determine loop bound, skip
+                if (!Bound) continue;
 
-                // Check: (prefetch_ptr - base) < N * elem_size, all in bytes.
-                // Using pointer arithmetic avoids recomputing the element index.
-                Value *PrefetchInt  = Builder.CreatePtrToInt(PrefetchPtr, I64Ty);
-                Value *BaseInt      = Builder.CreatePtrToInt(
-                    getUnderlyingBasePointer(Ptr), I64Ty);
-                Value *ByteOffset   = Builder.CreateSub(PrefetchInt, BaseInt,
+                Value *BaseAddr   = Builder.CreatePtrToInt(
+                    getUnderlyingBasePointer(Ptr), I64Ty, "prefetch.base");
+                Value *ByteOffset = Builder.CreateSub(PrefetchAddr, BaseAddr,
                     "prefetch.byte_offset");
-                Value *Bound64      = Builder.CreateIntCast(Bound, I64Ty, /*isSigned=*/true);
-                Value *BoundBytes   = Builder.CreateMul(
-                    Bound64, ConstantInt::get(I64Ty, ElemSize), "prefetch.bound_bytes");
-                Value *InBounds     = Builder.CreateICmpULT(
+                Value *Bound64    = Builder.CreateIntCast(Bound, I64Ty, /*isSigned=*/true);
+
+                // For symbolic stride the total array span is loop_bound * |step_bytes|,
+                // which is a tighter bound than loop_bound * elemSize.
+                Value *BoundBytes;
+                if (StepBytesVal) {
+                    Value *AbsStep = Builder.CreateSelect(
+                        Builder.CreateICmpSGE(StepBytesVal, ConstantInt::get(I64Ty, 0)),
+                        StepBytesVal,
+                        Builder.CreateNeg(StepBytesVal, "step.neg"),
+                        "step.abs");
+                    BoundBytes = Builder.CreateMul(Bound64, AbsStep, "prefetch.bound_bytes");
+                } else {
+                    BoundBytes = Builder.CreateMul(
+                        Bound64, ConstantInt::get(I64Ty, ElemSize), "prefetch.bound_bytes");
+                }
+
+                Value *InBounds = Builder.CreateICmpULT(
                     ByteOffset, BoundBytes, "prefetch.inbounds");
 
-                // Split the block at C.loadInst; the load moves to MergeBB.
-                // GEP/bitcast/cmp instructions above stay in OrigBB.
-                BasicBlock *OrigBB  = C.loadInst->getParent();
-                BasicBlock *MergeBB = OrigBB->splitBasicBlock(C.loadInst, "prefetch.merge");
+                // Split at the load; all address computation stays in OrigBB.
+                BasicBlock *OrigBB    = C.loadInst->getParent();
+                BasicBlock *MergeBB   = OrigBB->splitBasicBlock(C.loadInst, "prefetch.merge");
                 BasicBlock *PrefetchBB = BasicBlock::Create(
                     Ctx, "prefetch.block", OrigBB->getParent(), MergeBB);
 
-                // Replace the unconditional branch splitBasicBlock inserted.
                 OrigBB->getTerminator()->eraseFromParent();
                 IRBuilder<>(OrigBB).CreateCondBr(InBounds, PrefetchBB, MergeBB);
 
-                // Prefetch block: call the intrinsic then fall through to merge.
                 IRBuilder<> PB(PrefetchBB);
-                PB.CreateCall(PrefetchFn,
-                    {I8Ptr, PB.getInt32(0), PB.getInt32(3), PB.getInt32(1)});
+                PB.CreateCall(PrefetchAsm, {PrefetchAddr});
                 PB.CreateBr(MergeBB);
 
                 errs() << "[PrefetchPass] inserted prefetch (guarded): base=" << C.baseText
-                       << " ahead_elems=" << AheadElems << "\n";
+                       << " distance=" << C.prefetchDistance
+                       << (C.strideSCEV ? " stride=symbolic" : "") << "\n";
                 Changed = true;
             }
         }
@@ -504,8 +675,12 @@ extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo llvmGetPassPluginIn
                 [](StringRef Name,
                    FunctionPassManager &FPM,
                    ArrayRef<PassBuilder::PipelineElement>) {
-                    if (Name == "prefetch-pass") {
-                        FPM.addPass(prefetching::PrefetchPass());
+                    if (Name == "prefetch-pass" || Name == "prefetch-hint-pass") {
+                        FPM.addPass(prefetching::PrefetchPass(prefetching::PrefetchMode::Hint));
+                        return true;
+                    }
+                    if (Name == "prefetch-pipeline-pass") {
+                        FPM.addPass(prefetching::PrefetchPass(prefetching::PrefetchMode::Pipeline));
                         return true;
                     }
                     return false;
