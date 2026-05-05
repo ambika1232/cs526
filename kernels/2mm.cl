@@ -1,3 +1,12 @@
+/**
+ * 2mm.cl: This file is part of the PolyBench/GPU 1.0 test suite.
+ *
+ *
+ * Contact: Scott Grauer-Gray <sgrauerg@gmail.com>
+ * Will Killian <killian@udel.edu>
+ * Louis-Noel Pouchet <pouchet@cse.ohio-state.edu>
+ * Web address: http://www.cse.ohio-state.edu/~pouchet/software/polybench/GPU
+ */
 
 #if defined(cl_khr_fp64)  // Khronos extension available?
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable
