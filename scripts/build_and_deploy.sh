@@ -15,7 +15,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER_DEST="tamirb2@cc-login.campuscluster.illinois.edu:~/scratch/tamirb2/cs526/benchmarks/ptx_files/"
 # --------------------
 
-KERNELS=(gemm atax bicg 2mm 3mm mvt syrk syr2k gesummv)
+KERNELS=(gemm atax bicg 2mm 3mm mvt syrk syr2k gesummv pipeline_bench)
 
 echo "==> Building LLVM plugin"
 bash "$ROOT/scripts/build_plugin.sh"

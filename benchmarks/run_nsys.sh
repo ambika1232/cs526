@@ -55,6 +55,34 @@ for KERNEL in "${KERNELS[@]}"; do
     done
 done
 
+# ── pipeline_bench: synthetic kernel, uses loop-iteration count not matrix dim ──
+# Working set = 256 * n * 4 bytes; must exceed L2 to force DRAM traffic.
+#   sm_75  (6 MB L2):  n=32768  → 32 MB
+#   sm_80  (40 MB L2): n=65536  → 64 MB
+#   sm_89  (96 MB L2): n=131072 → 128 MB
+case "$SM" in
+    sm_80) PB_N=65536  ;;
+    sm_89) PB_N=131072 ;;
+    *)     PB_N=32768  ;;   # sm_75 and anything else
+esac
+
+BENCH="$SCRIPT_DIR/bench_pipeline_bench"
+if [[ -x "$BENCH" ]]; then
+    for VARIANT in "${VARIANTS[@]}"; do
+        PTX="$PTX_DIR/pipeline_bench_${SM}_${VARIANT}.ptx"
+        if [[ ! -f "$PTX" ]]; then
+            echo "SKIP pipeline_bench ${VARIANT} — PTX not found: $PTX"
+            continue
+        fi
+        REPORT="$REPORTS/report_pipeline_bench_${VARIANT}_N${PB_N}"
+        echo "==> nsys profile: pipeline_bench / ${VARIANT} (n=${PB_N})"
+        nsys profile --force-overwrite true -o "$REPORT" "$BENCH" "$PTX" "$PB_N"
+        echo "    -> $REPORT.nsys-rep"
+    done
+else
+    echo "SKIP pipeline_bench — bench_pipeline_bench not built"
+fi
+
 echo ""
 echo "All reports written to $REPORTS/"
 echo ""
