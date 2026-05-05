@@ -37,7 +37,7 @@ for fname in sorted(os.listdir(REPORTS_DIR)):
 
     try:
         out = subprocess.check_output(
-            ["nsys", "stats", fpath],
+            ["nsys", "stats", "--force-export=true", fpath],
             stderr=subprocess.DEVNULL, text=True
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
