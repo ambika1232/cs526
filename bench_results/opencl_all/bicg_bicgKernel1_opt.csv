@@ -1,0 +1,3 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,bicg,True,bicgKernel1,256,0.0,0.042976,kernels_opt/bicg.cl,0.043135999999999994,0.049024,kernels/bicg.cl,0.04928,1.140729709605361,1.142433234421365
+262144,bicg,True,bicgKernel1,256,0.0,0.082272,kernels_opt/bicg.cl,0.083184,0.09308799999999999,kernels/bicg.cl,0.094176,1.131466355503695,1.132140796306982

@@ -1,0 +1,20 @@
+/home/ambikas2/.conda/envs/llvm-dev/lib/python3.14/site-packages/pyopencl/__init__.py:570: CompilerWarning: From-source build succeeded, but resulted in non-empty logs:
+Build on <pyopencl.Device 'NVIDIA H200 NVL' on 'NVIDIA CUDA' at 0x5e01b6a0d9f0> succeeded, but said:
+
+(): Warning: Function gesummv_kernel is a kernel, so overriding noinline attribute. The function may be inlined when called.
+
+
+  lambda: self._prg.build(options_bytes, devices),
+
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/gesummv.cl
+Optimized: kernels_opt/gesummv.cl
+Kernel function: gesummv_kernel
+
+N=65536
+    kernel arg count: 8
+    kernel arg count: 8
+  original=0.1000 ms optimized=0.1021 ms speedup=0.979x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/gesummv.csv
+

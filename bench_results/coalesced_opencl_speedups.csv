@@ -1,0 +1,5 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+262144,coalesced,True,test,256,0.0,0.004543999999999999,kernels_opt/coalesced.cl,0.005024,0.004384,kernels/coalesced.cl,0.005072,0.9647887323943662,1.0095541401273886
+1048576,coalesced,True,test,256,0.0,0.006656,kernels_opt/coalesced.cl,0.007168,0.006592,kernels/coalesced.cl,0.0072,0.9903846153846154,1.0044642857142858
+4194304,coalesced,True,test,256,0.0,0.014943999999999999,kernels_opt/coalesced.cl,0.015536,0.014848,kernels/coalesced.cl,0.015488,0.993576017130621,0.9969104016477858
+16777216,coalesced,True,test,256,0.0,0.056223999999999996,kernels_opt/coalesced.cl,0.057583999999999996,0.056192,kernels/coalesced.cl,0.057727999999999995,0.9994308480364258,1.0025006946373993

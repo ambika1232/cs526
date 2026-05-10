@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+262144,offset,True,test,256,0.0,0.004863999999999999,kernels_opt/offset.cl,0.00528,0.0048,kernels/offset.cl,0.005296,0.986842105263158,1.0030303030303032

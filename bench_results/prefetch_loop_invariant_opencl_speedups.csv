@@ -1,0 +1,5 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+262144,prefetch_loop_invariant,True,test_no_prefetch_invariant,256,0.0,0.051519999999999996,kernels_opt/prefetch_loop_invariant.cl,0.052064,0.051104,kernels/prefetch_loop_invariant.cl,0.051871999999999995,0.9919254658385093,0.9963122311001843
+1048576,prefetch_loop_invariant,True,test_no_prefetch_invariant,256,0.0,0.715136,kernels_opt/prefetch_loop_invariant.cl,0.715792,0.715136,kernels/prefetch_loop_invariant.cl,0.715776,1.0,0.999977647137716
+4194304,prefetch_loop_invariant,True,test_no_prefetch_invariant,256,0.0,10.95472,kernels_opt/prefetch_loop_invariant.cl,10.957632,10.954912,kernels/prefetch_loop_invariant.cl,10.957488,1.0000175266916909,0.9999868584745316
+16777216,prefetch_loop_invariant,True,test_no_prefetch_invariant,256,0.0,173.610624,kernels_opt/prefetch_loop_invariant.cl,173.633808,173.616832,kernels/prefetch_loop_invariant.cl,173.64032,1.0000357581803287,1.0000375042169207

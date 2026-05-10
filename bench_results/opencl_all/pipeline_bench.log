@@ -1,0 +1,12 @@
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/pipeline_bench.cl
+Optimized: kernels_opt/pipeline_bench.cl
+Kernel function: pipeline_bench
+
+N=65536
+    kernel arg count: 3
+    kernel arg count: 3
+  original=27.7804 ms optimized=10.1057 ms speedup=2.749x correct=False max_abs_err=nan
+
+Wrote bench_results/opencl_all/pipeline_bench.csv
+

@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/home/ambikas2/cs526/scripts/opencl.py", line 1026, in <module>
+    main()
+    ~~~~^^
+  File "/home/ambikas2/cs526/scripts/opencl.py", line 984, in main
+    case = make_case(args.kernel, original_path, kernel_name)
+  File "/home/ambikas2/cs526/scripts/opencl.py", line 834, in make_case
+    raise RuntimeError(
+    ...<2 lines>...
+    )
+RuntimeError: No adapter for kernel 'hotspot'. Add a run_hotspot_kernel function for its argument signature.
+
+ERROR conda.cli.main_run:execute(127): `conda run python scripts/opencl.py --kernel hotspot --sizes 65536 --local-size 256 --warmup 2 --repeat 5 --out bench_results/opencl_all/hotspot.csv` failed. (See above for error)

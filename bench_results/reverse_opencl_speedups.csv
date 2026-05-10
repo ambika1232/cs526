@@ -1,0 +1,5 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+262144,reverse,True,test,256,0.0,0.00464,kernels_opt/reverse.cl,0.005024,0.004704,kernels/reverse.cl,0.005056,1.013793103448276,1.0063694267515924
+1048576,reverse,True,test,256,0.0,0.00656,kernels_opt/reverse.cl,0.0072,0.00656,kernels/reverse.cl,0.0072,1.0,1.0
+4194304,reverse,True,test,256,0.0,0.014816,kernels_opt/reverse.cl,0.015472,0.015007999999999999,kernels/reverse.cl,0.015423999999999998,1.0129589632829372,0.9968976215098241
+16777216,reverse,True,test,256,0.0,0.056352,kernels_opt/reverse.cl,0.0576,0.056352,kernels/reverse.cl,0.057632,1.0,1.0005555555555556

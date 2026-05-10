@@ -1,0 +1,31 @@
+PLUGIN ENTRY LOADED
+opt: WARNING: failed to create target machine for 'spir64-unknown-unknown': unable to get target for 'spir64-unknown-unknown', see --version and --triple.
+REGISTERING CALLBACK
+PIPELINE NAME: tile-remap-pass
+ADDING TileRemapPass
+ENTER tile-remap run: reject_plus_one
+[TileRemapPass] reject function without explicit bound: reject_plus_one
+ENTER tile-remap run: __clang_ocl_kern_imp_reject_plus_one
+[TileRemapPass] reject function without explicit bound: __clang_ocl_kern_imp_reject_plus_one
+ENTER tile-remap run: reject_minus_one
+[TileRemapPass] reject function without explicit bound: reject_minus_one
+ENTER tile-remap run: __clang_ocl_kern_imp_reject_minus_one
+[TileRemapPass] reject function without explicit bound: __clang_ocl_kern_imp_reject_minus_one
+ENTER tile-remap run: reject_coalesced
+[TileRemapPass] reject function without explicit bound: reject_coalesced
+ENTER tile-remap run: __clang_ocl_kern_imp_reject_coalesced
+[TileRemapPass] reject function without explicit bound: __clang_ocl_kern_imp_reject_coalesced
+ENTER tile-remap run: accept_clean_strided
+[TileRemapPass] reject function without explicit bound: accept_clean_strided
+ENTER tile-remap run: __clang_ocl_kern_imp_accept_clean_strided
+[TileRemapPass] reject function without explicit bound: __clang_ocl_kern_imp_accept_clean_strided
+[SCEV strided reject] nonzero const offset=1
+[layout-aware strided match] %4 stride_elems=4 const_elems=1 vector_width=4
+[SCEV strided reject] nonzero const offset=1
+[layout-aware strided match] %2 stride_elems=4 const_elems=1 vector_width=4
+[SCEV strided reject] nonzero const offset=-1
+[layout-aware strided match] %4 stride_elems=4 const_elems=-1 vector_width=4
+[SCEV strided reject] nonzero const offset=-1
+[layout-aware strided match] %2 stride_elems=4 const_elems=-1 vector_width=4
+[SCEV strided match] %4 stride_elems=4 const_elems=0
+[SCEV strided match] %2 stride_elems=4 const_elems=0
