@@ -1452,6 +1452,20 @@ struct StridedLoadMatch
   unsigned SharedPadElems = 1;
 };
 
+static uint64_t computePaddedTileElems(uint64_t LogicalElems,
+                                       unsigned PadEvery,
+                                       unsigned PadElems)
+{
+  if (LogicalElems == 0)
+    return 0;
+
+  if (!PadEvery || !PadElems)
+    return LogicalElems;
+
+  uint64_t PadGroups = (LogicalElems - 1) / PadEvery;
+  return LogicalElems + PadGroups * PadElems;
+}
+
 static FunctionCallee getOrCreateOCLBuiltin(Module &M,
                                             StringRef Name,
                                             Type *RetTy,
@@ -1751,6 +1765,50 @@ static bool matchYangStridedLoad(LoadInst *LI,
 
   return false;
 }
+
+static unsigned countCompatibleStridedLoads(ArrayRef<LoadInst *> Loads,
+                                            const StridedLoadMatch &Target,
+                                            const DataLayout &DL,
+                                            ScalarEvolution &SE,
+                                            const SCEV *TidXS,
+                                            const SCEV *TidYS)
+{
+  unsigned Count = 0;
+
+  for (LoadInst *OtherLI : Loads)
+  {
+    if (!OtherLI || !OtherLI->getParent())
+      continue;
+
+    StridedLoadMatch Other;
+    if (!matchYangStridedLoad(OtherLI, DL, SE, TidXS, TidYS, Other))
+      continue;
+
+    if (Other.BasePtr == Target.BasePtr &&
+        Other.StrideElems == Target.StrideElems &&
+        Other.ConstElems == Target.ConstElems &&
+        Other.ElemTy == Target.ElemTy)
+    {
+      ++Count;
+    }
+  }
+
+  return Count;
+}
+
+static bool isProfitableTileRemap(ArrayRef<LoadInst *> Loads,
+                                  const StridedLoadMatch &Match,
+                                  const DataLayout &DL,
+                                  ScalarEvolution &SE,
+                                  const SCEV *TidXS,
+                                  const SCEV *TidYS)
+{
+  // For a single-use gather such as A[4 * tid], cooperative tile-remap loads
+  // roughly the whole dense span, adds a barrier, and then reads from local
+  // memory. That is usually slower than the hardware's cached strided load.
+  // Require reuse of the same tile before paying that cost.
+  return countCompatibleStridedLoads(Loads, Match, DL, SE, TidXS, TidYS) >= 2;
+}
 struct CoalescedStoreMatch
 {
   StoreInst *SI = nullptr;
@@ -1883,6 +1941,16 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
       if (!matchYangStridedLoad(LI, DL, SE, TidXS, TidYS, Match))
         continue;
 
+      if (!isProfitableTileRemap(CandidateLoads, Match, DL, SE, TidXS, TidYS))
+      {
+        outs() << "[TileRemapPass] skip unprofitable single-use strided load in function="
+               << F.getName()
+               << " stride_elems=" << Match.StrideElems
+               << " const_elems=" << Match.ConstElems
+               << "\n";
+        continue;
+      }
+
       BasicBlock *OrigBB = LI->getParent();
       BasicBlock *ContBB = OrigBB->splitBasicBlock(LI, "tile.cont");
       LLVMContext &Ctx = F.getContext();
@@ -1930,9 +1998,20 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           ConstantInt::get(BOrig.getInt64Ty(), 1),
           "valid.tile.elems");
 
-      // Fixed allocation size in entry block. Extra space accounts for one
-      // padding element per 32 logical entries to reduce common bank conflicts.
-      Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), 256);
+      // Fixed allocation size in entry block for the benchmark's default
+      // 256-thread workgroup. The logical tile covers lane * stride, so a
+      // stride-4 access needs 1021 elements, not 256. Account for the bank
+      // padding applied by addSharedBankPadding() as well.
+      constexpr uint64_t AssumedMaxLocalSize = 256;
+      uint64_t LogicalTileElems =
+          static_cast<uint64_t>(Match.StrideElems) *
+              (AssumedMaxLocalSize - 1) +
+          1;
+      uint64_t PaddedTileElems =
+          computePaddedTileElems(LogicalTileElems,
+                                 Match.SharedPadEvery,
+                                 Match.SharedPadElems);
+      Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), PaddedTileElems);
 
       Instruction *InsertPt = &*F.getEntryBlock().getFirstInsertionPt();
       AllocaInst *Tile = new AllocaInst(
