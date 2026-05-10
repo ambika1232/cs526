@@ -1,0 +1,2 @@
+error: unknown argument: '-fdeclare-opencl-builtins'
+error: /home/ambikas2/cs526/bench_results/bc/hotspot.bc: No such file or directory

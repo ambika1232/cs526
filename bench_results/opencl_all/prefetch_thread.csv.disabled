@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,prefetch_thread,True,stencil1d,256,0.0,0.0056,kernels_opt/prefetch_thread.cl,0.005632,0.005088,kernels/prefetch_thread.cl,0.0054719999999999994,0.9085714285714285,0.9715909090909091

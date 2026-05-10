@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,gemm,True,gemm,16,0.0,0.097248,kernels_opt/gemm.cl,0.09856,0.097216,kernels/gemm.cl,0.097728,0.9996709443896018,0.9915584415584415

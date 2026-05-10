@@ -1,0 +1,289 @@
+PLUGIN ENTRY LOADED
+opt: WARNING: failed to create target machine for 'spir64-unknown-unknown': unable to get target for 'spir64-unknown-unknown', see --version and --triple.
+REGISTERING CALLBACK
+PIPELINE NAME: coalescing-pass
+ADDING CoalescingPass
+ENTER run: mm2_kernel1
+[SCEV] tid_x=%call.i
+[SCEV] tid_y=%call1.i
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: ((4 * ((sext i32 (%14 * %15)<nsw> to i64) + (sext i32 %16 to i64))<nsw>)<nsw> + %13)
+    PTR BASE SCEV: %13
+    GEP PTR OPERAND: %13
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=((%14 * %15)<nsw> + %16)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx11.i
+    STRIPPED PTR: %arrayidx11.i
+    PTR SCEV: ((4 * ((sext i32 (%21 * %22)<nsw> to i64) + (sext i32 %23 to i64))<nsw>)<nsw> + %20)
+    PTR BASE SCEV: %20
+    GEP PTR OPERAND: %20
+    GEP INDICES:
+      idx0=%idxprom10.i
+        scev=((%21 * %22)<nsw> + %23)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx16.i
+    STRIPPED PTR: %arrayidx16.i
+    PTR SCEV: ((4 * ((sext i32 (%26 * %27)<nsw> to i64) + (sext i32 %28 to i64))<nsw>)<nsw> + %25)
+    PTR BASE SCEV: %25
+    GEP PTR OPERAND: %25
+    GEP INDICES:
+      idx0=%idxprom15.i
+        scev=((%26 * %27)<nsw> + %28)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21.i
+    STRIPPED PTR: %arrayidx21.i
+    PTR SCEV: ((4 * ((sext i32 (%31 * %32)<nsw> to i64) + (sext i32 %33 to i64))<nsw>)<nsw> + %30)
+    PTR BASE SCEV: %30
+    GEP PTR OPERAND: %30
+    GEP INDICES:
+      idx0=%idxprom20.i
+        scev=((%31 * %32)<nsw> + %33)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21.i
+    STRIPPED PTR: %arrayidx21.i
+    PTR SCEV: ((4 * ((sext i32 (%31 * %32)<nsw> to i64) + (sext i32 %33 to i64))<nsw>)<nsw> + %30)
+    PTR BASE SCEV: %30
+    GEP PTR OPERAND: %30
+    GEP INDICES:
+      idx0=%idxprom20.i
+        scev=((%31 * %32)<nsw> + %33)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+ENTER run: __clang_ocl_kern_imp_mm2_kernel1
+[CoalescingPass] function=mm2_kernel1
+  access=store base=%13 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%20 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%25 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%30 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%30 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  summary: keep=0 broadcast_reuse=0 tile_remap=0 skip=5
+[SCEV] tid_x=%call
+[SCEV] tid_y=%call1
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: ((4 * ((sext i32 (%5 * %6)<nsw> to i64) + (sext i32 %7 to i64))<nsw>)<nsw> + %4)
+    PTR BASE SCEV: %4
+    GEP PTR OPERAND: %4
+    GEP INDICES:
+      idx0=%idxprom
+        scev=((%5 * %6)<nsw> + %7)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx11
+    STRIPPED PTR: %arrayidx11
+    PTR SCEV: ((4 * ((sext i32 (%12 * %13)<nsw> to i64) + (sext i32 %14 to i64))<nsw>)<nsw> + %11)
+    PTR BASE SCEV: %11
+    GEP PTR OPERAND: %11
+    GEP INDICES:
+      idx0=%idxprom10
+        scev=((%12 * %13)<nsw> + %14)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx16
+    STRIPPED PTR: %arrayidx16
+    PTR SCEV: ((4 * ((sext i32 (%17 * %18)<nsw> to i64) + (sext i32 %19 to i64))<nsw>)<nsw> + %16)
+    PTR BASE SCEV: %16
+    GEP PTR OPERAND: %16
+    GEP INDICES:
+      idx0=%idxprom15
+        scev=((%17 * %18)<nsw> + %19)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21
+    STRIPPED PTR: %arrayidx21
+    PTR SCEV: ((4 * ((sext i32 (%22 * %23)<nsw> to i64) + (sext i32 %24 to i64))<nsw>)<nsw> + %21)
+    PTR BASE SCEV: %21
+    GEP PTR OPERAND: %21
+    GEP INDICES:
+      idx0=%idxprom20
+        scev=((%22 * %23)<nsw> + %24)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21
+    STRIPPED PTR: %arrayidx21
+    PTR SCEV: ((4 * ((sext i32 (%22 * %23)<nsw> to i64) + (sext i32 %24 to i64))<nsw>)<nsw> + %21)
+    PTR BASE SCEV: %21
+    GEP PTR OPERAND: %21
+    GEP INDICES:
+      idx0=%idxprom20
+        scev=((%22 * %23)<nsw> + %24)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+ENTER run: mm2_kernel2
+[CoalescingPass] function=__clang_ocl_kern_imp_mm2_kernel1
+  access=store base=%4 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%11 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%16 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%21 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%21 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  summary: keep=0 broadcast_reuse=0 tile_remap=0 skip=5
+[SCEV] tid_x=%call.i
+[SCEV] tid_y=%call1.i
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: ((4 * ((sext i32 (%15 * %16)<nsw> to i64) + (sext i32 %17 to i64))<nsw>)<nsw> + %14)
+    PTR BASE SCEV: %14
+    GEP PTR OPERAND: %14
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=((%15 * %16)<nsw> + %17)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: ((4 * ((sext i32 (%15 * %16)<nsw> to i64) + (sext i32 %17 to i64))<nsw>)<nsw> + %14)
+    PTR BASE SCEV: %14
+    GEP PTR OPERAND: %14
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=((%15 * %16)<nsw> + %17)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx12.i
+    STRIPPED PTR: %arrayidx12.i
+    PTR SCEV: ((4 * ((sext i32 (%22 * %23)<nsw> to i64) + (sext i32 %24 to i64))<nsw>)<nsw> + %21)
+    PTR BASE SCEV: %21
+    GEP PTR OPERAND: %21
+    GEP INDICES:
+      idx0=%idxprom11.i
+        scev=((%22 * %23)<nsw> + %24)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx16.i
+    STRIPPED PTR: %arrayidx16.i
+    PTR SCEV: ((4 * ((sext i32 (%27 * %28)<nsw> to i64) + (sext i32 %29 to i64))<nsw>)<nsw> + %26)
+    PTR BASE SCEV: %26
+    GEP PTR OPERAND: %26
+    GEP INDICES:
+      idx0=%idxprom15.i
+        scev=((%27 * %28)<nsw> + %29)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21.i
+    STRIPPED PTR: %arrayidx21.i
+    PTR SCEV: ((4 * ((sext i32 (%32 * %33)<nsw> to i64) + (sext i32 %34 to i64))<nsw>)<nsw> + %31)
+    PTR BASE SCEV: %31
+    GEP PTR OPERAND: %31
+    GEP INDICES:
+      idx0=%idxprom20.i
+        scev=((%32 * %33)<nsw> + %34)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21.i
+    STRIPPED PTR: %arrayidx21.i
+    PTR SCEV: ((4 * ((sext i32 (%32 * %33)<nsw> to i64) + (sext i32 %34 to i64))<nsw>)<nsw> + %31)
+    PTR BASE SCEV: %31
+    GEP PTR OPERAND: %31
+    GEP INDICES:
+      idx0=%idxprom20.i
+        scev=((%32 * %33)<nsw> + %34)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+ENTER run: __clang_ocl_kern_imp_mm2_kernel2
+[CoalescingPass] function=mm2_kernel2
+  access=load base=%14 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%14 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%21 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%26 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%31 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%31 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  summary: keep=0 broadcast_reuse=0 tile_remap=0 skip=6
+[SCEV] tid_x=%call
+[SCEV] tid_y=%call1
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: ((4 * ((sext i32 (%6 * %7)<nsw> to i64) + (sext i32 %8 to i64))<nsw>)<nsw> + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%idxprom
+        scev=((%6 * %7)<nsw> + %8)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: ((4 * ((sext i32 (%6 * %7)<nsw> to i64) + (sext i32 %8 to i64))<nsw>)<nsw> + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%idxprom
+        scev=((%6 * %7)<nsw> + %8)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx12
+    STRIPPED PTR: %arrayidx12
+    PTR SCEV: ((4 * ((sext i32 (%13 * %14)<nsw> to i64) + (sext i32 %15 to i64))<nsw>)<nsw> + %12)
+    PTR BASE SCEV: %12
+    GEP PTR OPERAND: %12
+    GEP INDICES:
+      idx0=%idxprom11
+        scev=((%13 * %14)<nsw> + %15)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx16
+    STRIPPED PTR: %arrayidx16
+    PTR SCEV: ((4 * ((sext i32 (%18 * %19)<nsw> to i64) + (sext i32 %20 to i64))<nsw>)<nsw> + %17)
+    PTR BASE SCEV: %17
+    GEP PTR OPERAND: %17
+    GEP INDICES:
+      idx0=%idxprom15
+        scev=((%18 * %19)<nsw> + %20)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21
+    STRIPPED PTR: %arrayidx21
+    PTR SCEV: ((4 * ((sext i32 (%23 * %24)<nsw> to i64) + (sext i32 %25 to i64))<nsw>)<nsw> + %22)
+    PTR BASE SCEV: %22
+    GEP PTR OPERAND: %22
+    GEP INDICES:
+      idx0=%idxprom20
+        scev=((%23 * %24)<nsw> + %25)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx21
+    STRIPPED PTR: %arrayidx21
+    PTR SCEV: ((4 * ((sext i32 (%23 * %24)<nsw> to i64) + (sext i32 %25 to i64))<nsw>)<nsw> + %22)
+    PTR BASE SCEV: %22
+    GEP PTR OPERAND: %22
+    GEP INDICES:
+      idx0=%idxprom20
+        scev=((%23 * %24)<nsw> + %25)<nsw> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+[CoalescingPass] function=__clang_ocl_kern_imp_mm2_kernel2
+  access=load base=%5 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%5 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%12 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%17 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%22 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%22 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  summary: keep=0 broadcast_reuse=0 tile_remap=0 skip=6

@@ -1,0 +1,4 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,gemm,True,gemm,16,0.3359375,0.016895999999999998,kernels_opt/gemm.cl,0.018208,0.097408,kernels/gemm.cl,0.098864,5.765151515151516,5.4297012302284715
+262144,gemm,True,gemm,16,0.96875,0.060416,kernels_opt/gemm.cl,0.061119999999999994,0.195072,kernels/gemm.cl,0.196448,3.228813559322034,3.2141361256544507
+1048576,gemm,True,gemm,16,3.140625,0.39071999999999996,kernels_opt/gemm.cl,0.39152,1.305184,kernels/gemm.cl,1.334064,3.3404586404586407,3.4073968124233756

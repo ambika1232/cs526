@@ -1,12 +1,10 @@
-# GPU Memory Coalescing Midterm Repo
+# GPU Memory Coalescing 
 
-This repository is a practical starter kit for an LLVM-based memory coalescing project targeting OpenCL kernels compiled through LLVM IR toward NVPTX. It is designed to support a midterm report even if you do **not** have access to an NVIDIA GPU.
-
-## What this repo provides
+This repository is a practical starter kit for an LLVM-based memory coalescing project targeting OpenCL kernels compiled through LLVM IR toward NVPTX.
 
 - An **LLVM new-pass-manager plugin** that scans memory accesses and classifies simple thread-dependent patterns.
 - A lightweight **warp-level coalescing estimator** based on stride and element size.
-- Example **OpenCL kernels** with coalesced and non-coalesced patterns.
+- Example **OpenCL kernels** with  coalesced and non-coalesced patterns.
 - Scripts to generate **LLVM IR** from OpenCL kernels.
 - A small Python utility to compute and print **estimated memory transactions per warp**.
 - A concise **midterm report template** that matches the current state of the project.
@@ -26,7 +24,7 @@ The current scope is intentionally realistic for a midterm:
 ## Repo layout
 
 ```text
-gpu-coalescing-midterm/
+cs526/
 ├── CMakeLists.txt
 ├── README.md
 ├── docs/
@@ -74,30 +72,128 @@ For each GEP-derived memory access, the pass prints:
 - estimated transactions per warp
 - a coarse label: `COALESCED`, `LIKELY_COALESCED`, `NON_COALESCED`, or `UNKNOWN`
 
-## Build prerequisites
+## Create and load `llvm-dev`
 
-You need an LLVM build/install that provides:
+The JupyterLab container used for this project does not have the cluster module
+system, so `module load` is not available:
 
-- `clang`
-- `opt`
-- `llvm-config`
-- LLVM headers and CMake package files
+```bash
+module: command not found
+```
 
-This repo assumes LLVM 15+ and uses the new pass manager plugin interface.
+Use a user-local conda environment instead. Create it once with LLVM and Clang
+from conda-forge:
+
+```bash
+source /opt/conda/etc/profile.d/conda.sh
+conda create -n llvm-dev -c conda-forge llvmdev clang cmake make compilers -y
+conda activate llvm-dev
+```
+
+This creates the environment under:
+
+```text
+/home/ambikas2/.conda/envs/llvm-dev
+```
+
+The important tools come from that environment:
+
+```text
+/home/ambikas2/.conda/envs/llvm-dev/bin/clang
+/home/ambikas2/.conda/envs/llvm-dev/bin/opt
+/home/ambikas2/.conda/envs/llvm-dev/bin/llvm-config
+```
+
+In the working setup, both LLVM and Clang reported version `22.1.4`.
+
+For future sessions, load the environment with:
+
+```bash
+source /opt/conda/etc/profile.d/conda.sh
+conda activate llvm-dev
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
+which clang opt llvm-config
+clang --version
+opt --version
+llvm-config --version
+```
+
+The key point is that conda installs a complete user-local LLVM toolchain, so
+the project does not need `module load`, root access, or a system-wide LLVM
+install.
+
+For the Python benchmark and plotting scripts, install the Python-side runtime
+packages into the same environment:
+
+```bash
+conda install -n llvm-dev -c conda-forge numpy pyopencl matplotlib -y
+```
+
+### CUDA runtime for GPU benchmarks
+
+The LLVM pass build only needs LLVM and Clang. Runtime GPU benchmarking also
+needs CUDA runtime libraries when using CUDA-backed tools such as CuPy. If
+`nvidia-smi` works but `nvcc`, `libnvrtc.so`, or `libcurand.so` are missing,
+install the runtime pieces into the same environment:
+
+```bash
+conda install -c nvidia cuda-nvrtc cuda-cudart -y
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+```
+
+This provides libraries such as:
+
+```text
+$CONDA_PREFIX/lib/libnvrtc.so.12
+$CONDA_PREFIX/lib/libcudart.so.12
+```
 
 ## Build the plugin
 
-```bash
-bash scripts/build_plugin.sh /path/to/llvm-install
-```
-
-If `llvm-config` is already on your `PATH`, you can also run:
+From the repository root:
 
 ```bash
-mkdir -p build && cd build
-cmake -DLLVM_DIR=$(llvm-config --cmakedir) ..
+source /opt/conda/etc/profile.d/conda.sh
+conda activate llvm-dev
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
+rm -rf build
+mkdir build
+cd build
+cmake .. -DLLVM_DIR="$(llvm-config --cmakedir)"
 cmake --build . -j
 ```
+
+`llvm-config --cmakedir` should point inside the conda environment, for example:
+
+```text
+/home/ambikas2/.conda/envs/llvm-dev/lib/cmake/llvm
+```
+
+That directory contains LLVM's CMake package files, which is why CMake can find
+LLVM.
+
+You can also use the helper script after activating `llvm-dev`:
+
+```bash
+bash scripts/build_plugin.sh
+```
+
+Depending on the CMake/LLVM setup, the plugin is written as either
+`build/CoalescingPass.so` or `build/libCoalescingPass.so`.
+
+### LLVM 22 source compatibility
+
+The conda environment uses LLVM 22, so the pass source has to use LLVM 22 API
+names and header paths. In this repo that means using:
+
+- `#include "llvm/Plugins/PassPlugin.h"` instead of
+  `#include "llvm/Passes/PassPlugin.h"`
+- `PointerType::get(...)` instead of removed typed-pointer helpers such as
+  `Type::getInt8PtrTy(...)`
+- `Intrinsic::getOrInsertDeclaration(...)` where LLVM 22 requires it instead
+  of older `Intrinsic::getDeclaration(...)` usage
 
 ## Compile OpenCL to LLVM IR
 
@@ -107,17 +203,84 @@ Example:
 bash scripts/compile_opencl_to_ll.sh kernels/strided.cl build/strided.ll
 ```
 
-Notes:
-
-- This step only generates LLVM IR.
-- You do **not** need an NVIDIA GPU for this stage.
-- Depending on your local Clang/OpenCL headers, you may need to adjust include paths.
-
 ## Run the analysis pass
 
 ```bash
-bash scripts/run_analysis.sh build/libCoalescingPass.so build/strided.ll
+PLUGIN=build/CoalescingPass.so
+test -f "$PLUGIN" || PLUGIN=build/libCoalescingPass.so
+bash scripts/run_analysis.sh "$PLUGIN" build/strided.ll
 ```
+
+The registered pass names are:
+
+- `coalescing-pass`: prints memory-access classifications.
+- `coalescing-rewrite-pass`: applies conservative local reuse rewrites.
+- `tile-remap-pass`: rewrites selected strided loads through local memory when
+  the pass decides the pattern is profitable.
+
+To run the full static pass benchmark across kernels in `kernels/`:
+
+```bash
+bash scripts/benchmark_kernels.sh
+```
+
+This writes:
+
+- `bench_results/summary.csv`: compile/analyze/transform timings and access
+  classification counts.
+- `bench_results/logs/*.before.log`: analysis before transformation.
+- `bench_results/logs/*.transform.log`: `tile-remap-pass` output.
+- `bench_results/logs/*.after.log`: analysis after transformation.
+- `bench_results/ll/*.baseline.ll` and `bench_results/ll/*.transformed.ll`:
+  generated LLVM IR.
+
+## Run the runtime benchmark and create plots
+
+The main OpenCL benchmark harness compares a baseline kernel in `kernels/`
+against the matching optimized kernel in `kernels_opt/`.
+
+Run one benchmark:
+
+```bash
+python scripts/opencl.py \
+  --kernel gemm \
+  --sizes 65536 262144 1048576 \
+  --local-size 16 \
+  --warmup 5 \
+  --repeat 20 \
+  --out bench_results/opencl_all/gemm.csv
+```
+
+Run the supported benchmark set and create the plots in one command:
+
+```bash
+python scripts/plot_opencl_results.py \
+  --run \
+  --input-dir bench_results/opencl_all \
+  --glob '*.csv' \
+  --out-dir bench_results/plots \
+  --sizes 65536 262144 1048576 \
+  --warmup 5 \
+  --repeat 20
+```
+
+Regenerate plots from existing CSVs without rerunning the benchmarks:
+
+```bash
+python scripts/plot_opencl_results.py \
+  --input-dir bench_results/opencl_all \
+  --glob '*.csv' \
+  --out-dir bench_results/plots
+```
+
+The main outputs are:
+
+- `bench_results/plots/plot_summary.csv`
+- `bench_results/plots/best_speedup_by_kernel.png`
+- `bench_results/plots/geomean_speedup_by_kernel.png`
+- `bench_results/plots/speedup_by_kernel.png`
+- `bench_results/plots/speedup_heatmap.png`
+- `bench_results/plots/runtime_median_N*.png`
 
 ## Example result
 

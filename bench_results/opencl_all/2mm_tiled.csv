@@ -1,0 +1,4 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,2mm,True,mm2_kernel1,16,0.0001373291015625,0.016128,kernels_opt/2mm.cl,0.01672,0.09843199999999999,kernels/2mm.cl,0.099248,6.103174603174603,5.935885167464115
+262144,2mm,True,mm2_kernel1,16,0.0004119873046875,0.059199999999999996,kernels_opt/2mm.cl,0.059648,0.19561599999999998,kernels/2mm.cl,0.19697599999999998,3.304324324324324,3.3023068669527893
+1048576,2mm,True,mm2_kernel1,16,0.001190185546875,0.3888,kernels_opt/2mm.cl,0.389968,1.3313279999999998,kernels/2mm.cl,1.351488,3.4241975308641974,3.465638206211792

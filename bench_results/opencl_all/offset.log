@@ -1,0 +1,12 @@
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/offset.cl
+Optimized: kernels_opt/offset.cl
+Kernel function: test
+
+N=65536
+    kernel arg count: 2
+    kernel arg count: 2
+  original=0.0054 ms optimized=0.0047 ms speedup=1.150x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/offset.csv
+

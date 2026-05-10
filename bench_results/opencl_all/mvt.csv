@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,mvt,True,mvt_kernel1,256,0.0,0.049152,kernels_opt/mvt.cl,0.050047999999999995,0.048639999999999996,kernels/mvt.cl,0.050272,0.9895833333333333,1.0044757033248082

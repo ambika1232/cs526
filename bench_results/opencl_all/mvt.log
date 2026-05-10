@@ -1,0 +1,22 @@
+/home/ambikas2/.conda/envs/llvm-dev/lib/python3.14/site-packages/pyopencl/__init__.py:570: CompilerWarning: From-source build succeeded, but resulted in non-empty logs:
+Build on <pyopencl.Device 'NVIDIA H200 NVL' on 'NVIDIA CUDA' at 0x5d2b6dd6b630> succeeded, but said:
+
+(): Warning: Function mvt_kernel1 is a kernel, so overriding noinline attribute. The function may be inlined when called.
+(): Warning: Function mvt_kernel2 is a kernel, so overriding noinline attribute. The function may be inlined when called.
+
+
+  lambda: self._prg.build(options_bytes, devices),
+
+Multiple kernels found in kernels/mvt.cl; defaulting to 'mvt_kernel1'.
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/mvt.cl
+Optimized: kernels_opt/mvt.cl
+Kernel function: mvt_kernel1
+
+N=65536
+    kernel arg count: 4
+    kernel arg count: 4
+  original=0.0503 ms optimized=0.0500 ms speedup=1.004x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/mvt.csv
+

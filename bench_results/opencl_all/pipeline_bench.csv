@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,pipeline_bench,False,pipeline_bench,256,nan,7.396576,kernels_opt/pipeline_bench.cl,10.105696,20.794784,kernels/pipeline_bench.cl,27.780351999999997,2.8114067914667547,2.748979585374426

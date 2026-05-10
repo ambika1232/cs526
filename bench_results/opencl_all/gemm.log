@@ -1,0 +1,12 @@
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/gemm.cl
+Optimized: kernels_opt/gemm.cl
+Kernel function: gemm
+
+N=65536
+    kernel arg count: 8
+    kernel arg count: 8
+  original=0.0977 ms optimized=0.0986 ms speedup=0.992x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/gemm.csv
+

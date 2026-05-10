@@ -1,0 +1,4 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,syrk,True,syrk_kernel,16,0.3515625,0.017568,kernels_opt/syrk.cl,0.018624,0.05456,kernels/syrk.cl,0.055327999999999995,3.105646630236794,2.9707903780068725
+262144,syrk,True,syrk_kernel,16,1.1875,0.07417599999999999,kernels_opt/syrk.cl,0.075104,0.393024,kernels/syrk.cl,0.394192,5.298533218291631,5.248615253515125
+1048576,syrk,True,syrk_kernel,16,3.625,0.519424,kernels_opt/syrk.cl,0.5205919999999999,7.890624,kernels/syrk.cl,7.935663999999999,15.191103992114343,15.243538125825983

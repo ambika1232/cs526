@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,syrk,True,syrk_kernel,16,0.0,0.054144,kernels_opt/syrk.cl,0.054624,0.05424,kernels/syrk.cl,0.054464,1.00177304964539,0.997070884592853

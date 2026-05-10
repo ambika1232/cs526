@@ -1,0 +1,5 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+262144,strided_reuse,False,test,256,2.987102508544922,0.005503999999999999,kernels_opt/strided_reuse.cl,0.0060479999999999996,0.004704,kernels/strided_reuse.cl,0.005312,0.8546511627906977,0.8783068783068784
+1048576,strided_reuse,False,test,256,2.9879162311553955,0.00912,kernels_opt/strided_reuse.cl,0.009792,0.006848,kernels/strided_reuse.cl,0.007488,0.7508771929824561,0.7647058823529411
+4194304,strided_reuse,False,test,256,2.996748447418213,0.029727999999999997,kernels_opt/strided_reuse.cl,0.0304,0.02496,kernels/strided_reuse.cl,0.025599999999999998,0.8396124865446718,0.8421052631578947
+16777216,strided_reuse,False,test,256,2.996748447418213,0.105568,kernels_opt/strided_reuse.cl,0.106192,0.084896,kernels/strided_reuse.cl,0.087712,0.8041830857835708,0.8259755913816483

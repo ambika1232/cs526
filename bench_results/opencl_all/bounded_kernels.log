@@ -1,0 +1,12 @@
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/bounded_kernels.cl
+Optimized: kernels_opt/bounded_kernels.cl
+Kernel function: bounded_strided
+
+N=65536
+    kernel arg count: 3
+    kernel arg count: 3
+  original=0.0058 ms optimized=0.0058 ms speedup=1.011x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/bounded_kernels.csv
+

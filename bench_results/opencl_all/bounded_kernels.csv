@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,bounded_kernels,True,bounded_strided,256,0.0,0.005728,kernels_opt/bounded_kernels.cl,0.0057599999999999995,0.00528,kernels/bounded_kernels.cl,0.005823999999999999,0.9217877094972068,1.011111111111111
