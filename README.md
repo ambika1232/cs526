@@ -74,6 +74,16 @@ For each GEP-derived memory access, the pass prints:
 
 ## Create and load `llvm-dev`
 
+Run all of these setup, build, and benchmark commands from the NCSA JupyterLab
+environment at:
+
+```text
+https://jupyter.ncsa.illinois.edu
+```
+
+The paths below use environment variables so the instructions work for any
+student account and do not depend on a specific course year or semester.
+
 The JupyterLab container used for this project does not have the cluster module
 system, so `module load` is not available:
 
@@ -93,15 +103,15 @@ conda activate llvm-dev
 This creates the environment under:
 
 ```text
-/home/ambikas2/.conda/envs/llvm-dev
+$HOME/.conda/envs/llvm-dev
 ```
 
 The important tools come from that environment:
 
 ```text
-/home/ambikas2/.conda/envs/llvm-dev/bin/clang
-/home/ambikas2/.conda/envs/llvm-dev/bin/opt
-/home/ambikas2/.conda/envs/llvm-dev/bin/llvm-config
+$CONDA_PREFIX/bin/clang
+$CONDA_PREFIX/bin/opt
+$CONDA_PREFIX/bin/llvm-config
 ```
 
 In the working setup, both LLVM and Clang reported version `22.1.4`.
@@ -168,7 +178,7 @@ cmake --build . -j
 `llvm-config --cmakedir` should point inside the conda environment, for example:
 
 ```text
-/home/ambikas2/.conda/envs/llvm-dev/lib/cmake/llvm
+$CONDA_PREFIX/lib/cmake/llvm
 ```
 
 That directory contains LLVM's CMake package files, which is why CMake can find
