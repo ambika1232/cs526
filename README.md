@@ -21,36 +21,6 @@ The current scope is intentionally realistic for a midterm:
    - `A[tid * k]` -> strided / non-coalesced when `k > 1`
 4. Estimate memory transactions at the warp level **without a physical GPU**.
 
-## Repo layout
-
-```text
-cs526/
-├── CMakeLists.txt
-├── README.md
-├── docs/
-│   └── midterm_report.md
-├── include/
-│   └── CoalescingAnalysis.h
-├── kernels/
-│   ├── coalesced.cl
-│   ├── offset.cl
-│   ├── reverse.cl
-│   └── strided.cl
-├── sample_ir/
-│   └── example_patterns.ll
-├── sample_output/
-│   └── expected_analysis.txt
-├── scripts/
-│   ├── build_plugin.sh
-│   ├── compile_opencl_to_ll.sh
-│   ├── run_analysis.sh
-│   └── tx_model.py
-├── src/
-│   └── CoalescingPass.cpp
-└── tests/
-    └── notes.md
-```
-
 ## What the pass currently detects
 
 The pass is intentionally simple and report-friendly. It looks for `getelementptr` instructions and tries to recover the final linear index pattern from the last GEP operand.
