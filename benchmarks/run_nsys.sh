@@ -30,14 +30,14 @@ elif [[ -n "${CUDA_PATH:-}" ]]; then
 elif command -v nvcc >/dev/null 2>&1; then
     CUDA_ROOT="$(dirname "$(dirname "$(which nvcc)")")"
 elif [[ -n "${CONDA_PREFIX:-}" ]]; then
-    if [[ -d "$CONDA_PREFIX/targets/x86_64-linux" ]]; then
-        CUDA_ROOT="$CONDA_PREFIX/targets/x86_64-linux"
-    else
-        CUDA_ROOT="$CONDA_PREFIX"
-    fi
+    CUDA_ROOT="$CONDA_PREFIX"
 else
     echo "ERROR: Cannot find CUDA. Set CUDA_HOME or activate the llvm-dev conda env." >&2
     exit 1
+fi
+# conda/nvcc installs headers under targets/x86_64-linux rather than include/
+if [[ ! -f "$CUDA_ROOT/include/cuda.h" && -f "$CUDA_ROOT/targets/x86_64-linux/include/cuda.h" ]]; then
+    CUDA_ROOT="$CUDA_ROOT/targets/x86_64-linux"
 fi
 CUDA_LIB="${CUDA_ROOT}/lib64/stubs"
 [[ -d "$CUDA_LIB" ]] || CUDA_LIB="${CUDA_ROOT}/lib"
