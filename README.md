@@ -112,22 +112,22 @@ conda install -n llvm-dev -c conda-forge numpy pyopencl matplotlib -y
 
 ### CUDA runtime for GPU benchmarks
 
-The LLVM pass build only needs LLVM and Clang. Runtime GPU benchmarking also
-needs CUDA runtime libraries when using CUDA-backed tools such as CuPy. If
-`nvidia-smi` works but `nvcc`, `libnvrtc.so`, or `libcurand.so` are missing,
-install the runtime pieces into the same environment:
+The LLVM pass build only needs LLVM and Clang. Runtime GPU benchmarking needs
+additional CUDA packages. Install them all at once:
 
 ```bash
-conda install -c nvidia cuda-nvrtc cuda-cudart -y
+conda install -c nvidia cuda-nvrtc cuda-cudart cuda-driver-dev cuda-nvcc -y
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 ```
 
-This provides libraries such as:
+- `cuda-nvrtc` / `cuda-cudart` — runtime libraries (`libnvrtc.so`, `libcudart.so`)
+- `cuda-driver-dev` — linker stub for `-lcuda`
+- `cuda-nvcc` — CUDA compiler and headers (`cuda.h`, installed under
+  `$CONDA_PREFIX/targets/x86_64-linux/include/`)
 
-```text
-$CONDA_PREFIX/lib/libnvrtc.so.12
-$CONDA_PREFIX/lib/libcudart.so.12
-```
+The Jupyter VM provides an **NVIDIA A100 (sm_80)**. All benchmark scripts
+default to `sm_80` and no `--sm` flag is needed unless you are targeting a
+different GPU.
 
 ## Build the plugin
 
@@ -214,10 +214,54 @@ This writes:
 - `bench_results/ll/*.baseline.ll` and `bench_results/ll/*.transformed.ll`:
   generated LLVM IR.
 
-## Run the runtime benchmark and create plots
+## Run the prefetch GPU benchmark
 
-The main OpenCL benchmark harness compares a baseline kernel in `kernels/`
-against the matching optimized kernel in `kernels_opt/`.
+This is the primary benchmark workflow. It compiles each OpenCL kernel to PTX
+via LLVM, applies the prefetch passes (base / L2-hint / software-pipeline), and
+times all three variants on the GPU using CUDA events.
+
+### Session setup (every new terminal)
+
+```bash
+source /opt/conda/etc/profile.d/conda.sh
+conda activate llvm-dev
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+```
+
+### One-time build (repeat when source changes)
+
+```bash
+# From the repository root:
+bash scripts/build_local.sh        # builds plugin + compiles all kernels to PTX
+                                   # PTX files → build/bench/*_sm_80_{base,hint,pipeline}.ptx
+
+cd benchmarks
+bash build_harnesses.sh            # compiles bench_*.c against the CUDA Driver API
+```
+
+### Run benchmarks and plot
+
+```bash
+# From benchmarks/:
+bash run_benchmarks.sh             # times all kernels → results/timings_sm80_N4096.csv
+python3 plot_timings.py results/timings_sm80_N4096.csv
+                                   # → results/timings_sm80_N4096.png
+```
+
+The CSV has columns `kernel, variant, N, avg_ms`. The plot normalises all
+variants to the baseline and annotates hint and pipeline bars with % change.
+
+To use a different matrix size:
+
+```bash
+bash run_benchmarks.sh sm_80 ../build/bench 8192
+python3 plot_timings.py results/timings_sm80_N8192.csv
+```
+
+## Run the coalescing static analysis benchmark
+
+The OpenCL benchmark harness compares a baseline kernel in `kernels/` against a
+manually optimised kernel in `kernels_opt/` using PyOpenCL timing.
 
 Run one benchmark:
 
