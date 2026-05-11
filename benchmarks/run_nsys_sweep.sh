@@ -47,6 +47,7 @@ if [[ ! -f "$CUDA_ROOT/include/cuda.h" && -f "$CUDA_ROOT/targets/x86_64-linux/in
     CUDA_ROOT="$CUDA_ROOT/targets/x86_64-linux"
 fi
 CUDA_LIB="${CUDA_ROOT}/lib64/stubs"
+[[ -d "$CUDA_LIB" ]] || CUDA_LIB="${CUDA_ROOT}/lib/stubs"
 [[ -d "$CUDA_LIB" ]] || CUDA_LIB="${CUDA_ROOT}/lib"
 echo "==> Recompiling bench harnesses (CUDA: $CUDA_ROOT)..."
 for SRC in "$SCRIPT_DIR"/bench_*.c; do
