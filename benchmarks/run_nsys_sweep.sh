@@ -37,7 +37,11 @@ elif [[ -n "${CUDA_PATH:-}" ]]; then
 elif command -v nvcc >/dev/null 2>&1; then
     CUDA_ROOT="$(dirname "$(dirname "$(which nvcc)")")"
 elif [[ -n "${CONDA_PREFIX:-}" ]]; then
-    CUDA_ROOT="$CONDA_PREFIX"
+    if [[ -d "$CONDA_PREFIX/targets/x86_64-linux" ]]; then
+        CUDA_ROOT="$CONDA_PREFIX/targets/x86_64-linux"
+    else
+        CUDA_ROOT="$CONDA_PREFIX"
+    fi
 else
     echo "ERROR: Cannot find CUDA. Set CUDA_HOME or activate the llvm-dev conda env." >&2
     exit 1
