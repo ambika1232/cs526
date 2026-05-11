@@ -546,7 +546,7 @@ struct PrefetchPass : public PassInfoMixin<PrefetchPass> {
         Type *I64Ty = Type::getInt64Ty(Ctx);
         bool Changed = false;
 
-        SCEVExpander Expander(SE, DL, "prefetch");
+        SCEVExpander Expander(SE, "prefetch");
 
         if (Mode == PrefetchMode::Pipeline) {
             for (const auto &C : Candidates) {
