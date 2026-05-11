@@ -53,7 +53,7 @@ for KERNEL in "${KERNELS[@]}"; do
 
         printf "  %-20s %-10s N=%-8s" "${KERNEL}" "${VARIANT}" "${KERNEL_N}"
         OUTPUT="$("$BENCH" "$PTX" "$KERNEL_N" 2>&1)" || true
-        AVG_MS="$(echo "$OUTPUT" | grep -oP 'avg kernel time: \K[0-9.]+' || true)"
+        AVG_MS="$(echo "$OUTPUT" | grep -oP 'avg \S+ time[^:]*: \K[0-9.]+' || true)"
 
         if [[ -z "$AVG_MS" ]]; then
             echo "ERROR — no timing output:"
