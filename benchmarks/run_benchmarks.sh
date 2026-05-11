@@ -52,12 +52,12 @@ for KERNEL in "${KERNELS[@]}"; do
         fi
 
         printf "  %-20s %-10s N=%-8s" "${KERNEL}" "${VARIANT}" "${KERNEL_N}"
-        OUTPUT="$("$BENCH" "$PTX" "$KERNEL_N" 2>&1)"
-        AVG_MS="$(echo "$OUTPUT" | grep -oP 'avg kernel time: \K[0-9.]+')"
+        OUTPUT="$("$BENCH" "$PTX" "$KERNEL_N" 2>&1)" || true
+        AVG_MS="$(echo "$OUTPUT" | grep -oP 'avg kernel time: \K[0-9.]+' || true)"
 
         if [[ -z "$AVG_MS" ]]; then
-            echo "ERROR — no timing output. Full output:"
-            echo "$OUTPUT"
+            echo "ERROR — no timing output:"
+            echo "$OUTPUT" | sed 's/^/    /'
             continue
         fi
 

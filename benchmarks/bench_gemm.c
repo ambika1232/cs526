@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction fn;
-    CHECK(cuModuleGetFunction(&fn, mod, "__clang_ocl_kern_imp_gemm"));
+    CHECK(cuModuleGetFunction(&fn, mod, "gemm"));
 
     CUdeviceptr d_a, d_b, d_c;
     CHECK(cuMemAlloc(&d_a, (size_t)ni * nk * sizeof(float)));

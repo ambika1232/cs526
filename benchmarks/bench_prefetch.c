@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
     free(ptx);
 
     CUfunction fn;
-    CHECK(cuModuleGetFunction(&fn, mod, "__clang_ocl_kern_imp_test_prefetch"));
+    CHECK(cuModuleGetFunction(&fn, mod, "test_prefetch"));
 
     CUdeviceptr d_A, d_B;
     CHECK(cuMemAlloc(&d_A, (size_t)N * sizeof(float)));

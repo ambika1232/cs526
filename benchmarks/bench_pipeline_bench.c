@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction fn;
-    CHECK(cuModuleGetFunction(&fn, mod, "__clang_ocl_kern_imp_pipeline_bench"));
+    CHECK(cuModuleGetFunction(&fn, mod, "pipeline_bench"));
 
     CUdeviceptr d_A, d_out;
     CHECK(cuMemAlloc(&d_A,   A_bytes));

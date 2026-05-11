@@ -50,8 +50,8 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction k1, k2;
-    CHECK(cuModuleGetFunction(&k1, mod, "__clang_ocl_kern_imp_mm2_kernel1"));
-    CHECK(cuModuleGetFunction(&k2, mod, "__clang_ocl_kern_imp_mm2_kernel2"));
+    CHECK(cuModuleGetFunction(&k1, mod, "mm2_kernel1"));
+    CHECK(cuModuleGetFunction(&k2, mod, "mm2_kernel2"));
 
     // tmp[ni*nj], A[ni*nk], B[nk*nj], C[nj*nl], D[ni*nl]
     CUdeviceptr d_tmp, d_A, d_B, d_C, d_D;

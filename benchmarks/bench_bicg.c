@@ -51,8 +51,8 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction k1, k2;
-    CHECK(cuModuleGetFunction(&k1, mod, "__clang_ocl_kern_imp_bicgKernel1"));
-    CHECK(cuModuleGetFunction(&k2, mod, "__clang_ocl_kern_imp_bicgKernel2"));
+    CHECK(cuModuleGetFunction(&k1, mod, "bicgKernel1"));
+    CHECK(cuModuleGetFunction(&k2, mod, "bicgKernel2"));
 
     // A[nx*ny], p[ny], q[nx], r[nx], s[ny]
     CUdeviceptr d_A, d_p, d_q, d_r, d_s;

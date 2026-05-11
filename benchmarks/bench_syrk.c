@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction kern;
-    CHECK(cuModuleGetFunction(&kern, mod, "__clang_ocl_kern_imp_syrk_kernel"));
+    CHECK(cuModuleGetFunction(&kern, mod, "syrk_kernel"));
 
     // a[nj*ni], c[nj*nj]
     CUdeviceptr d_a, d_c;

@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction kern;
-    CHECK(cuModuleGetFunction(&kern, mod, "__clang_ocl_kern_imp_gesummv_kernel"));
+    CHECK(cuModuleGetFunction(&kern, mod, "gesummv_kernel"));
 
     // a[n*n], b[n*n], x[n], y[n], tmp[n]
     CUdeviceptr d_a, d_b, d_x, d_y, d_tmp;

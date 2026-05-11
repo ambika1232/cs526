@@ -50,9 +50,9 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction k1, k2, k3;
-    CHECK(cuModuleGetFunction(&k1, mod, "__clang_ocl_kern_imp_mm3_kernel1"));
-    CHECK(cuModuleGetFunction(&k2, mod, "__clang_ocl_kern_imp_mm3_kernel2"));
-    CHECK(cuModuleGetFunction(&k3, mod, "__clang_ocl_kern_imp_mm3_kernel3"));
+    CHECK(cuModuleGetFunction(&k1, mod, "mm3_kernel1"));
+    CHECK(cuModuleGetFunction(&k2, mod, "mm3_kernel2"));
+    CHECK(cuModuleGetFunction(&k3, mod, "mm3_kernel3"));
 
     // A[ni*nk], B[nk*nj], C[nj*nm], D[nm*nl], E[ni*nj], F[nj*nl], G[ni*nl]
     CUdeviceptr d_A, d_B, d_C, d_D, d_E, d_F, d_G;

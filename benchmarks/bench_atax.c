@@ -51,8 +51,8 @@ int main(int argc, char **argv) {
     CUmodule mod; CHECK(cuModuleLoadData(&mod, ptx)); free(ptx);
 
     CUfunction k1, k2;
-    CHECK(cuModuleGetFunction(&k1, mod, "__clang_ocl_kern_imp_atax_kernel1"));
-    CHECK(cuModuleGetFunction(&k2, mod, "__clang_ocl_kern_imp_atax_kernel2"));
+    CHECK(cuModuleGetFunction(&k1, mod, "atax_kernel1"));
+    CHECK(cuModuleGetFunction(&k2, mod, "atax_kernel2"));
 
     // A[nx*ny], x[ny], tmp[nx], y[ny]
     CUdeviceptr d_A, d_x, d_tmp, d_y;
