@@ -1,0 +1,4 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,syr2k,True,syr2k_kernel,16,0.6015625,0.025471999999999998,kernels_opt/syr2k.cl,0.02624,0.09568,kernels/syr2k.cl,0.096784,3.756281407035176,3.6884146341463415
+262144,syr2k,True,syr2k_kernel,16,1.796875,0.139648,kernels_opt/syr2k.cl,0.140768,0.724128,kernels/syr2k.cl,0.724864,5.185380384967919,5.149352125483063
+1048576,syr2k,True,syr2k_kernel,16,5.46875,1.043712,kernels_opt/syr2k.cl,1.044768,15.430432,kernels/syr2k.cl,15.455248,14.784185675741968,14.792995191276916

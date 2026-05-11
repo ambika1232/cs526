@@ -1,0 +1,301 @@
+PLUGIN ENTRY LOADED
+opt: WARNING: failed to create target machine for 'spir64-unknown-unknown': unable to get target for 'spir64-unknown-unknown', see --version and --triple.
+REGISTERING CALLBACK
+PIPELINE NAME: coalescing-pass
+ADDING CoalescingPass
+ENTER run: bounded_strided
+[SCEV] tid_x=%call.i
+    RAW PTR: %vec.global.ptr
+    STRIPPED PTR: %vec.global.ptr
+    PTR SCEV: {((16 * %gid0) + %5),+,(16 * %lsize0)}<%tile.preload.header>
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%global.idx
+        scev={(4 * %gid0),+,(4 * %lsize0)}<%tile.preload.header> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=yes scev_other=no scev_known=yes
+    RAW PTR: %vec.tile.ptr
+    STRIPPED PTR: %vec.tile.ptr
+    PTR SCEV: ((4 * (({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx
+        scev=(({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr
+    STRIPPED PTR: %lane.safe.global.ptr
+    PTR SCEV: ((4 * %lane.safe.global.idx) + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%lane.safe.global.idx
+        scev=%lane.safe.global.idx scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr
+    STRIPPED PTR: %tile.scalar.ptr
+    PTR SCEV: ((4 * (({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx3
+        scev=(({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr9
+    STRIPPED PTR: %lane.safe.global.ptr9
+    PTR SCEV: ((4 * %lane.safe.global.idx8) + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%lane.safe.global.idx8
+        scev=%lane.safe.global.idx8 scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr15
+    STRIPPED PTR: %tile.scalar.ptr15
+    PTR SCEV: ((4 * (({(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx14
+        scev=(({(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr22
+    STRIPPED PTR: %lane.safe.global.ptr22
+    PTR SCEV: ((4 * %lane.safe.global.idx21) + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%lane.safe.global.idx21
+        scev=%lane.safe.global.idx21 scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr28
+    STRIPPED PTR: %tile.scalar.ptr28
+    PTR SCEV: ((4 * (({(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx27
+        scev=(({(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr35
+    STRIPPED PTR: %lane.safe.global.ptr35
+    PTR SCEV: ((4 * %lane.safe.global.idx34) + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%lane.safe.global.idx34
+        scev=%lane.safe.global.idx34 scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr41
+    STRIPPED PTR: %tile.scalar.ptr41
+    PTR SCEV: ((4 * (({(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx40
+        scev=(({(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %shared.ptr
+    STRIPPED PTR: %shared.ptr
+    PTR SCEV: ((4 * ((%shared.safe.logical.idx /u 32) + %shared.safe.logical.idx)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx44
+        scev=((%shared.safe.logical.idx /u 32) + %shared.safe.logical.idx) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx4.i
+    STRIPPED PTR: %arrayidx4.i
+    PTR SCEV: ((4 * (sext i32 %8 to i64))<nsw> + %7)
+    PTR BASE SCEV: %7
+    GEP PTR OPERAND: %7
+    GEP INDICES:
+      idx0=%idxprom3.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: __clang_ocl_kern_imp_bounded_strided
+[CoalescingPass] function=bounded_strided
+  access=load base=%5 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=16 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=16 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%5 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%5 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%5 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%5 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%7 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=0 skip=11
+[SCEV] tid_x=%call
+    RAW PTR: %vec.global.ptr
+    STRIPPED PTR: %vec.global.ptr
+    PTR SCEV: {((16 * %gid0) + %2),+,(16 * %lsize0)}<%tile.preload.header>
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%global.idx
+        scev={(4 * %gid0),+,(4 * %lsize0)}<%tile.preload.header> scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=yes scev_other=no scev_known=yes
+    RAW PTR: %vec.tile.ptr
+    STRIPPED PTR: %vec.tile.ptr
+    PTR SCEV: ((4 * (({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx
+        scev=(({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr
+    STRIPPED PTR: %lane.safe.global.ptr
+    PTR SCEV: ((4 * %lane.safe.global.idx) + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%lane.safe.global.idx
+        scev=%lane.safe.global.idx scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr
+    STRIPPED PTR: %tile.scalar.ptr
+    PTR SCEV: ((4 * (({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx3
+        scev=(({(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(4 * %lid0),+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr9
+    STRIPPED PTR: %lane.safe.global.ptr9
+    PTR SCEV: ((4 * %lane.safe.global.idx8) + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%lane.safe.global.idx8
+        scev=%lane.safe.global.idx8 scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr15
+    STRIPPED PTR: %tile.scalar.ptr15
+    PTR SCEV: ((4 * (({(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx14
+        scev=(({(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(1 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr22
+    STRIPPED PTR: %lane.safe.global.ptr22
+    PTR SCEV: ((4 * %lane.safe.global.idx21) + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%lane.safe.global.idx21
+        scev=%lane.safe.global.idx21 scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr28
+    STRIPPED PTR: %tile.scalar.ptr28
+    PTR SCEV: ((4 * (({(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx27
+        scev=(({(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(2 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %lane.safe.global.ptr35
+    STRIPPED PTR: %lane.safe.global.ptr35
+    PTR SCEV: ((4 * %lane.safe.global.idx34) + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%lane.safe.global.idx34
+        scev=%lane.safe.global.idx34 scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=yes scev_known=yes
+    RAW PTR: %tile.scalar.ptr41
+    STRIPPED PTR: %tile.scalar.ptr41
+    PTR SCEV: ((4 * (({(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx40
+        scev=(({(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header> /u 32) + {(3 + (4 * %lid0))<nuw><nsw>,+,(4 * %lsize0)}<%tile.preload.header>) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %shared.ptr
+    STRIPPED PTR: %shared.ptr
+    PTR SCEV: ((4 * ((%shared.safe.logical.idx /u 32) + %shared.safe.logical.idx)) + %tile.local)
+    PTR BASE SCEV: %tile.local
+    GEP PTR OPERAND: %tile.local
+    GEP INDICES:
+      idx0=%tile.physical.idx44
+        scev=((%shared.safe.logical.idx /u 32) + %shared.safe.logical.idx) scev_coeff_tid_x=0 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=no
+    RAW PTR: %arrayidx4
+    STRIPPED PTR: %arrayidx4
+    PTR SCEV: ((4 * (sext i32 %5 to i64))<nsw> + %4)
+    PTR BASE SCEV: %4
+    GEP PTR OPERAND: %4
+    GEP INDICES:
+      idx0=%idxprom3
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+[CoalescingPass] function=__clang_ocl_kern_imp_bounded_strided
+  access=load base=%2 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=16 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=16 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%2 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%2 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%2 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=%2 byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=load base=tile.local byte_offset=unknown thread_dependent=no stride_x_bytes=0 access_size=4 exact=no contiguous=no monotonic=no broadcast=no class=UNKNOWN
+    candidate: inspect with SCEV for affine decomposition
+    action=SKIP_UNKNOWN
+    reason=insufficient confidence for a safe profitability-guided rewrite
+  access=store base=%4 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=0 skip=11

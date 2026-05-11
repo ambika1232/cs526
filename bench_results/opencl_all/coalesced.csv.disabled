@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,coalesced,True,test,256,0.0,0.005248,kernels_opt/coalesced.cl,0.005408,0.004543999999999999,kernels/coalesced.cl,0.005248,0.8658536585365852,0.970414201183432

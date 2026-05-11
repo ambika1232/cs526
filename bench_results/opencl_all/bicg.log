@@ -1,0 +1,13 @@
+Multiple kernels found in kernels/bicg.cl; defaulting to 'bicgKernel1'.
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/bicg.cl
+Optimized: kernels_opt/bicg.cl
+Kernel function: bicgKernel1
+
+N=65536
+    kernel arg count: 5
+    kernel arg count: 5
+  original=0.0509 ms optimized=0.0503 ms speedup=1.012x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/bicg.csv
+

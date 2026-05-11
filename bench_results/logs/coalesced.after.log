@@ -1,0 +1,61 @@
+PLUGIN ENTRY LOADED
+opt: WARNING: failed to create target machine for 'spir64-unknown-unknown': unable to get target for 'spir64-unknown-unknown', see --version and --triple.
+REGISTERING CALLBACK
+PIPELINE NAME: coalescing-pass
+ADDING CoalescingPass
+ENTER run: test
+[SCEV] tid_x=%call.i
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: ((4 * (sext i32 %3 to i64))<nsw> + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2.i
+    STRIPPED PTR: %arrayidx2.i
+    PTR SCEV: ((4 * (sext i32 %6 to i64))<nsw> + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%idxprom1.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: __clang_ocl_kern_imp_test
+[CoalescingPass] function=test
+  access=load base=%2 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as global coalesced load
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  access=store base=%5 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=2 broadcast_reuse=0 tile_remap=0 skip=0
+[SCEV] tid_x=%call
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: ((4 * (sext i32 %1 to i64))<nsw> + %0)
+    PTR BASE SCEV: %0
+    GEP PTR OPERAND: %0
+    GEP INDICES:
+      idx0=%idxprom
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2
+    STRIPPED PTR: %arrayidx2
+    PTR SCEV: ((4 * (sext i32 %4 to i64))<nsw> + %3)
+    PTR BASE SCEV: %3
+    GEP PTR OPERAND: %3
+    GEP INDICES:
+      idx0=%idxprom1
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+[CoalescingPass] function=__clang_ocl_kern_imp_test
+  access=load base=%0 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as global coalesced load
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  access=store base=%3 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=2 broadcast_reuse=0 tile_remap=0 skip=0

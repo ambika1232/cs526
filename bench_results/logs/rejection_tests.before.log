@@ -1,0 +1,229 @@
+PLUGIN ENTRY LOADED
+opt: WARNING: failed to create target machine for 'spir64-unknown-unknown': unable to get target for 'spir64-unknown-unknown', see --version and --triple.
+REGISTERING CALLBACK
+PIPELINE NAME: coalescing-pass
+ADDING CoalescingPass
+ENTER run: reject_plus_one
+[SCEV] tid_x=%call.i
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: (4 + (4 * (sext i32 (4 * %3)<nsw> to i64))<nsw> + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=(1 + (4 * %3)<nsw>)<nuw><nsw> scev_coeff_tid_x=4 scev_coeff_tid_y=0 scev_const=1 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2.i
+    STRIPPED PTR: %arrayidx2.i
+    PTR SCEV: ((4 * (sext i32 %6 to i64))<nsw> + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%idxprom1.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: __clang_ocl_kern_imp_reject_plus_one
+[CoalescingPass] function=reject_plus_one
+  access=load base=%2 byte_offset=16*tid_x+4 thread_dependent=yes stride_x_bytes=16 access_size=4 exact=yes contiguous=no monotonic=yes broadcast=no class=STRIDED
+    candidate: tile/remap through shared memory to enforce contiguous x access
+    action=TILE_REMAP
+    reason=access is thread-dependent but non-contiguous/strided; rewrite through cooperative tiled load
+  access=store base=%5 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=1 skip=0
+[SCEV] tid_x=%call
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: (4 + (4 * (sext i32 (4 * %1)<nsw> to i64))<nsw> + %0)
+    PTR BASE SCEV: %0
+    GEP PTR OPERAND: %0
+    GEP INDICES:
+      idx0=%idxprom
+        scev=(1 + (4 * %1)<nsw>)<nuw><nsw> scev_coeff_tid_x=4 scev_coeff_tid_y=0 scev_const=1 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2
+    STRIPPED PTR: %arrayidx2
+    PTR SCEV: ((4 * (sext i32 %4 to i64))<nsw> + %3)
+    PTR BASE SCEV: %3
+    GEP PTR OPERAND: %3
+    GEP INDICES:
+      idx0=%idxprom1
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: reject_minus_one
+[CoalescingPass] function=__clang_ocl_kern_imp_reject_plus_one
+  access=load base=%0 byte_offset=16*tid_x+4 thread_dependent=yes stride_x_bytes=16 access_size=4 exact=yes contiguous=no monotonic=yes broadcast=no class=STRIDED
+    candidate: tile/remap through shared memory to enforce contiguous x access
+    action=TILE_REMAP
+    reason=access is thread-dependent but non-contiguous/strided; rewrite through cooperative tiled load
+  access=store base=%3 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=1 skip=0
+[SCEV] tid_x=%call.i
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: (-4 + (4 * (sext i32 (4 * %3)<nsw> to i64))<nsw> + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=(-1 + (4 * %3)<nsw>)<nsw> scev_coeff_tid_x=4 scev_coeff_tid_y=0 scev_const=-1 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2.i
+    STRIPPED PTR: %arrayidx2.i
+    PTR SCEV: ((4 * (sext i32 %6 to i64))<nsw> + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%idxprom1.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: __clang_ocl_kern_imp_reject_minus_one
+[CoalescingPass] function=reject_minus_one
+  access=load base=%2 byte_offset=16*tid_x-4 thread_dependent=yes stride_x_bytes=16 access_size=4 exact=yes contiguous=no monotonic=yes broadcast=no class=STRIDED
+    candidate: tile/remap through shared memory to enforce contiguous x access
+    action=TILE_REMAP
+    reason=access is thread-dependent but non-contiguous/strided; rewrite through cooperative tiled load
+  access=store base=%5 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=1 skip=0
+[SCEV] tid_x=%call
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: (-4 + (4 * (sext i32 (4 * %1)<nsw> to i64))<nsw> + %0)
+    PTR BASE SCEV: %0
+    GEP PTR OPERAND: %0
+    GEP INDICES:
+      idx0=%idxprom
+        scev=(-1 + (4 * %1)<nsw>)<nsw> scev_coeff_tid_x=4 scev_coeff_tid_y=0 scev_const=-1 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2
+    STRIPPED PTR: %arrayidx2
+    PTR SCEV: ((4 * (sext i32 %4 to i64))<nsw> + %3)
+    PTR BASE SCEV: %3
+    GEP PTR OPERAND: %3
+    GEP INDICES:
+      idx0=%idxprom1
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: reject_coalesced
+[CoalescingPass] function=__clang_ocl_kern_imp_reject_minus_one
+  access=load base=%0 byte_offset=16*tid_x-4 thread_dependent=yes stride_x_bytes=16 access_size=4 exact=yes contiguous=no monotonic=yes broadcast=no class=STRIDED
+    candidate: tile/remap through shared memory to enforce contiguous x access
+    action=TILE_REMAP
+    reason=access is thread-dependent but non-contiguous/strided; rewrite through cooperative tiled load
+  access=store base=%3 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=1 skip=0
+[SCEV] tid_x=%call.i
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: ((4 * (sext i32 %3 to i64))<nsw> + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2.i
+    STRIPPED PTR: %arrayidx2.i
+    PTR SCEV: ((4 * (sext i32 %6 to i64))<nsw> + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%idxprom1.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: __clang_ocl_kern_imp_reject_coalesced
+[CoalescingPass] function=reject_coalesced
+  access=load base=%2 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as global coalesced load
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  access=store base=%5 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=2 broadcast_reuse=0 tile_remap=0 skip=0
+[SCEV] tid_x=%call
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: ((4 * (sext i32 %1 to i64))<nsw> + %0)
+    PTR BASE SCEV: %0
+    GEP PTR OPERAND: %0
+    GEP INDICES:
+      idx0=%idxprom
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2
+    STRIPPED PTR: %arrayidx2
+    PTR SCEV: ((4 * (sext i32 %4 to i64))<nsw> + %3)
+    PTR BASE SCEV: %3
+    GEP PTR OPERAND: %3
+    GEP INDICES:
+      idx0=%idxprom1
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: accept_clean_strided
+[CoalescingPass] function=__clang_ocl_kern_imp_reject_coalesced
+  access=load base=%0 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as global coalesced load
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  access=store base=%3 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=2 broadcast_reuse=0 tile_remap=0 skip=0
+[SCEV] tid_x=%call.i
+    RAW PTR: %arrayidx.i
+    STRIPPED PTR: %arrayidx.i
+    PTR SCEV: ((4 * (sext i32 (4 * %3)<nsw> to i64))<nsw> + %2)
+    PTR BASE SCEV: %2
+    GEP PTR OPERAND: %2
+    GEP INDICES:
+      idx0=%idxprom.i
+        scev=(4 * %3)<nsw> scev_coeff_tid_x=4 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2.i
+    STRIPPED PTR: %arrayidx2.i
+    PTR SCEV: ((4 * (sext i32 %6 to i64))<nsw> + %5)
+    PTR BASE SCEV: %5
+    GEP PTR OPERAND: %5
+    GEP INDICES:
+      idx0=%idxprom1.i
+        scev=%call.i scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+ENTER run: __clang_ocl_kern_imp_accept_clean_strided
+[CoalescingPass] function=accept_clean_strided
+  access=load base=%2 byte_offset=16*tid_x thread_dependent=yes stride_x_bytes=16 access_size=4 exact=yes contiguous=no monotonic=yes broadcast=no class=STRIDED
+    candidate: tile/remap through shared memory to enforce contiguous x access
+    action=TILE_REMAP
+    reason=access is thread-dependent but non-contiguous/strided; rewrite through cooperative tiled load
+  access=store base=%5 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=1 skip=0
+[SCEV] tid_x=%call
+    RAW PTR: %arrayidx
+    STRIPPED PTR: %arrayidx
+    PTR SCEV: ((4 * (sext i32 (4 * %1)<nsw> to i64))<nsw> + %0)
+    PTR BASE SCEV: %0
+    GEP PTR OPERAND: %0
+    GEP INDICES:
+      idx0=%idxprom
+        scev=(4 * %1)<nsw> scev_coeff_tid_x=4 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+    RAW PTR: %arrayidx2
+    STRIPPED PTR: %arrayidx2
+    PTR SCEV: ((4 * (sext i32 %4 to i64))<nsw> + %3)
+    PTR BASE SCEV: %3
+    GEP PTR OPERAND: %3
+    GEP INDICES:
+      idx0=%idxprom1
+        scev=%call scev_coeff_tid_x=1 scev_coeff_tid_y=0 scev_const=0 scev_looprec=no scev_other=no scev_known=yes
+[CoalescingPass] function=__clang_ocl_kern_imp_accept_clean_strided
+  access=load base=%0 byte_offset=16*tid_x thread_dependent=yes stride_x_bytes=16 access_size=4 exact=yes contiguous=no monotonic=yes broadcast=no class=STRIDED
+    candidate: tile/remap through shared memory to enforce contiguous x access
+    action=TILE_REMAP
+    reason=access is thread-dependent but non-contiguous/strided; rewrite through cooperative tiled load
+  access=store base=%3 byte_offset=4*tid_x thread_dependent=yes stride_x_bytes=4 access_size=4 exact=yes contiguous=yes monotonic=yes broadcast=no class=FULLY_COALESCED
+    candidate: keep as coalesced store
+    action=KEEP_GLOBAL
+    reason=access already varies contiguously across tid_x; preserve direct global access
+  summary: keep=1 broadcast_reuse=0 tile_remap=1 skip=0

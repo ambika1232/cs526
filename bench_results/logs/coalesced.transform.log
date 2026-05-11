@@ -1,0 +1,9 @@
+PLUGIN ENTRY LOADED
+opt: WARNING: failed to create target machine for 'spir64-unknown-unknown': unable to get target for 'spir64-unknown-unknown', see --version and --triple.
+REGISTERING CALLBACK
+PIPELINE NAME: tile-remap-pass
+ADDING TileRemapPass
+ENTER tile-remap run: test
+[TileRemapPass] reject function without explicit bound: test
+ENTER tile-remap run: __clang_ocl_kern_imp_test
+[TileRemapPass] reject function without explicit bound: __clang_ocl_kern_imp_test

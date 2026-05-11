@@ -1,0 +1,12 @@
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/prefetch_loop_invariant.cl
+Optimized: kernels_opt/prefetch_loop_invariant.cl
+Kernel function: test_no_prefetch_invariant
+
+N=65536
+    kernel arg count: 3
+    kernel arg count: 3
+  original=0.0091 ms optimized=0.0087 ms speedup=1.044x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/prefetch_loop_invariant.csv
+

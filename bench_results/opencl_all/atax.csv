@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,atax,True,atax_kernel1,256,0.0,0.049215999999999996,kernels_opt/atax.cl,0.050207999999999996,0.04976,kernels/atax.cl,0.050432,1.0110533159947985,1.004461440407903

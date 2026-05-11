@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,3mm,True,mm3_kernel1,16,0.0,0.096672,kernels_opt/3mm.cl,0.097216,0.09561599999999999,kernels/3mm.cl,0.09686399999999999,0.9890764647467726,0.9963791968400263

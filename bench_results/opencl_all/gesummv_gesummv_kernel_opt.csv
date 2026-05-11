@@ -1,0 +1,3 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,gesummv,True,gesummv_kernel,256,0.0,0.081504,kernels_opt/gesummv.cl,0.08220799999999999,0.099808,kernels/gesummv.cl,0.10062399999999999,1.2245779348252848,1.224017127286882
+262144,gesummv,True,gesummv_kernel,256,0.0,0.15881599999999998,kernels_opt/gesummv.cl,0.16011199999999998,0.19535999999999998,kernels/gesummv.cl,0.196176,1.230102760427161,1.225242330368742

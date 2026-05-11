@@ -1,0 +1,4 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,convolution_2d,True,Convolution2D_kernel,16,0.0,0.004384,kernels_opt/convolution_2d.cl,0.004416,0.004928,kernels/convolution_2d.cl,0.0052,1.1240875912408759,1.1775362318840579
+262144,convolution_2d,True,Convolution2D_kernel,16,0.0,0.0057599999999999995,kernels_opt/convolution_2d.cl,0.006336,0.005888,kernels/convolution_2d.cl,0.006288,1.0222222222222224,0.9924242424242425
+1048576,convolution_2d,True,Convolution2D_kernel,16,0.0,0.008095999999999999,kernels_opt/convolution_2d.cl,0.009024,0.008095999999999999,kernels/convolution_2d.cl,0.010112,1.0,1.1205673758865247

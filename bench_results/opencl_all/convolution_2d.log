@@ -1,0 +1,12 @@
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/convolution_2d.cl
+Optimized: kernels_opt/convolution_2d.cl
+Kernel function: Convolution2D_kernel
+
+N=65536
+    kernel arg count: 4
+    kernel arg count: 4
+  original=0.0059 ms optimized=0.0059 ms speedup=1.000x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/convolution_2d.csv
+

@@ -1,0 +1,5 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+262144,prefetch,True,test_prefetch,256,0.0,0.12889599999999998,kernels_opt/prefetch.cl,0.131104,0.129152,kernels/prefetch.cl,0.131232,1.0019860973187686,1.0009763241396143
+1048576,prefetch,True,test_prefetch,256,0.0,1.2678399999999999,kernels_opt/prefetch.cl,1.273552,1.267328,kernels/prefetch.cl,1.2714079999999999,0.9995961635537608,0.998316519466814
+4194304,prefetch,True,test_prefetch,256,0.0,32.979776,kernels_opt/prefetch.cl,33.14984,33.028096,kernels/prefetch.cl,33.198927999999995,1.0014651403332757,1.0014807914608335
+16777216,prefetch,True,test_prefetch,256,0.0,694.023392,kernels_opt/prefetch.cl,695.5655039999999,694.378976,kernels/prefetch.cl,696.0341759999999,1.000512351606731,1.0006737999473878

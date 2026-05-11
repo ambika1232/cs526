@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,rejection_tests,True,accept_clean_strided,256,0.0,0.005696,kernels_opt/rejection_tests.cl,0.005791999999999999,0.005536,kernels/rejection_tests.cl,0.005823999999999999,0.9719101123595506,1.005524861878453

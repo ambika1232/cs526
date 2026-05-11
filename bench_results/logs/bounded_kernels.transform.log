@@ -1,0 +1,13 @@
+PLUGIN ENTRY LOADED
+opt: WARNING: failed to create target machine for 'spir64-unknown-unknown': unable to get target for 'spir64-unknown-unknown', see --version and --triple.
+REGISTERING CALLBACK
+PIPELINE NAME: tile-remap-pass
+ADDING TileRemapPass
+ENTER tile-remap run: bounded_strided
+ENTER tile-remap run: __clang_ocl_kern_imp_bounded_strided
+[SCEV strided match] %7 stride_elems=4 const_elems=0
+[SCEV strided match] %7 stride_elems=4 const_elems=0
+[TileRemapPass] remapped strided load in function=bounded_strided stride_elems=4 const_elems=0
+[SCEV strided match] %4 stride_elems=4 const_elems=0
+[SCEV strided match] %4 stride_elems=4 const_elems=0
+[TileRemapPass] remapped strided load in function=__clang_ocl_kern_imp_bounded_strided stride_elems=4 const_elems=0

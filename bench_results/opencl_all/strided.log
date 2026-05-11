@@ -1,0 +1,12 @@
+OpenCL device: NVIDIA H200 NVL
+Original: kernels/strided.cl
+Optimized: kernels_opt/strided.cl
+Kernel function: test
+
+N=65536
+    kernel arg count: 3
+    kernel arg count: 3
+  original=0.0058 ms optimized=0.0051 ms speedup=1.131x correct=True max_abs_err=0.000e+00
+
+Wrote bench_results/opencl_all/strided.csv
+

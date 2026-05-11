@@ -1,0 +1,6 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+262144,strided,True,test,256,0.0,0.0048,kernels_opt/strided.cl,0.005552,0.006431999999999999,kernels/strided.cl,0.006895999999999999,1.34,1.2420749279538905
+1048576,strided,True,test,256,0.0,0.009696,kernels_opt/strided.cl,0.012272,0.009696,kernels/strided.cl,0.012208,1.0,0.9947848761408083
+4194304,strided,True,test,256,0.0,0.0272,kernels_opt/strided.cl,0.031376,0.027327999999999998,kernels/strided.cl,0.030992,1.0047058823529411,0.9877613462519123
+16777216,strided,True,test,256,0.0,0.09142399999999999,kernels_opt/strided.cl,0.09368,0.085312,kernels/strided.cl,0.093616,0.9331466573328667,0.9993168232280103
+67108864,strided,True,test,256,0.0,0.339008,kernels_opt/strided.cl,0.34192,0.339424,kernels/strided.cl,0.34187199999999995,1.0012271096847274,0.9998596162845108

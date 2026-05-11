@@ -7,7 +7,7 @@
 #include "llvm/IR/PassManager.h"
 
 #include "llvm/Passes/PassBuilder.h"
-#include "llvm/Passes/PassPlugin.h"
+#include "llvm/Plugins/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/IR/InstrTypes.h"
@@ -90,54 +90,57 @@ namespace
     return "SKIP_UNKNOWN";
   }
 
-  static bool shouldSkipFunction(const Function &F)
+static bool shouldSkipFunction(const Function &F)
+{
+  return F.isDeclaration();
+}
+
+static const Value *stripPointerCastsAndOffsets(const Value *V)
+{
+  while (true)
   {
-    if (F.isDeclaration())
-      return true;
-    // return F.getName().startswith("__clang_ocl_kern_imp_");
-    return F.getName().starts_with("__clang_ocl_kern_imp_");
+    if (auto *BC = dyn_cast<BitCastOperator>(V))
+    {
+      V = BC->getOperand(0);
+      continue;
+    }
+
+    if (auto *ASC = dyn_cast<AddrSpaceCastOperator>(V))
+    {
+      V = ASC->getOperand(0);
+      continue;
+    }
+
+    if (auto *GEP = dyn_cast<GEPOperator>(V))
+    {
+      V = GEP->getPointerOperand();
+      continue;
+    }
+
+    if (auto *BCI = dyn_cast<BitCastInst>(V))
+    {
+      V = BCI->getOperand(0);
+      continue;
+    }
+
+    if (auto *ASCI = dyn_cast<AddrSpaceCastInst>(V))
+    {
+      V = ASCI->getOperand(0);
+      continue;
+    }
+
+    if (auto *GEPI = dyn_cast<GetElementPtrInst>(V))
+    {
+      V = GEPI->getPointerOperand();
+      continue;
+    }
+
+    // IMPORTANT: no more stripping possible.
+    break;
   }
 
-  static const Value *stripPointerCastsAndOffsets(const Value *V)
-  {
-    while (true)
-    {
-      if (auto *BC = dyn_cast<BitCastOperator>(V))
-      {
-        V = BC->getOperand(0);
-        continue;
-      }
-      if (auto *ASC = dyn_cast<AddrSpaceCastOperator>(V))
-      {
-        V = ASC->getOperand(0);
-        continue;
-      }
-      if (auto *GEP = dyn_cast<GEPOperator>(V))
-      {
-        V = GEP->getPointerOperand();
-        continue;
-      }
-      if (auto *I = dyn_cast<Instruction>(V))
-      {
-        if (auto *BCI = dyn_cast<BitCastInst>(I))
-        {
-          V = BCI->getOperand(0);
-          continue;
-        }
-        if (auto *ASCI = dyn_cast<AddrSpaceCastInst>(I))
-        {
-          V = ASCI->getOperand(0);
-          continue;
-        }
-        if (auto *GEPI = dyn_cast<GetElementPtrInst>(I))
-        {
-          V = GEPI->getPointerOperand();
-          continue;
-        }
-      }
-    }
-    return V;
-  }
+  return V;
+}
 
   static std::string valueToString(const Value *V)
   {
@@ -1432,7 +1435,36 @@ struct StridedLoadMatch
   int64_t StrideElems = 0; // e.g. 4 for A[4*tid]
   int64_t ConstElems = 0;  // constant element offset
   uint64_t ElemSizeBytes = 0;
+
+  // Yang-style extensions.
+  // VectorWidth > 1 means the cooperative global->shared preload uses
+  // 128-bit vector chunks when possible, with scalar fallback for tails.
+  unsigned VectorWidth = 1;
+
+  // True when this came from the recursive affine byte-offset matcher rather
+  // than the simple single-index SCEV matcher. This is the limited
+  // layout-aware path for lowered 2D/multi-index GEPs.
+  bool LayoutAware = false;
+
+  // Shared-memory padding used to avoid common bank-conflict-heavy layouts.
+  // This does not change global semantics; it only changes local tile layout.
+  unsigned SharedPadEvery = 32;
+  unsigned SharedPadElems = 1;
 };
+
+static uint64_t computePaddedTileElems(uint64_t LogicalElems,
+                                       unsigned PadEvery,
+                                       unsigned PadElems)
+{
+  if (LogicalElems == 0)
+    return 0;
+
+  if (!PadEvery || !PadElems)
+    return LogicalElems;
+
+  uint64_t PadGroups = (LogicalElems - 1) / PadEvery;
+  return LogicalElems + PadGroups * PadElems;
+}
 
 static FunctionCallee getOrCreateOCLBuiltin(Module &M,
                                             StringRef Name,
@@ -1468,6 +1500,48 @@ static Value *createGetLocalSize0(IRBuilder<> &B, Module &M)
       B.getInt64Ty(),
       {B.getInt32Ty()});
   return B.CreateCall(Callee, {B.getInt32(0)}, "lsize0");
+}
+
+static Value *createGetGroupId0(IRBuilder<> &B, Module &M)
+{
+  auto Callee = getOrCreateOCLBuiltin(
+      M, "_Z12get_group_idj",
+      B.getInt64Ty(),
+      {B.getInt32Ty()});
+  return B.CreateCall(Callee, {B.getInt32(0)}, "groupid0");
+}
+
+static unsigned choose128BitVectorWidth(Type *ElemTy, uint64_t ElemSizeBytes)
+{
+  if (!ElemTy || ElemSizeBytes == 0)
+    return 1;
+
+  // Only vectorize simple scalar element types. 128 bits / elem_size.
+  if (!(ElemTy->isIntegerTy() || ElemTy->isFloatingPointTy()))
+    return 1;
+
+  if (16 % ElemSizeBytes != 0)
+    return 1;
+
+  unsigned W = static_cast<unsigned>(16 / ElemSizeBytes);
+  if (W < 2)
+    return 1;
+  if (W > 4)
+    W = 4;
+  return W;
+}
+
+static Value *addSharedBankPadding(IRBuilder<> &B, Value *LogicalIdx,
+                                   unsigned PadEvery, unsigned PadElems)
+{
+  if (!PadEvery || !PadElems)
+    return LogicalIdx;
+
+  Value *PadEveryV = ConstantInt::get(LogicalIdx->getType(), PadEvery);
+  Value *PadElemsV = ConstantInt::get(LogicalIdx->getType(), PadElems);
+  Value *Groups = B.CreateUDiv(LogicalIdx, PadEveryV, "tile.pad.groups");
+  Value *Pad = B.CreateMul(Groups, PadElemsV, "tile.pad");
+  return B.CreateAdd(LogicalIdx, Pad, "tile.physical.idx");
 }
 
 static CallInst *createBarrier(IRBuilder<> &B, Module &M)
@@ -1594,6 +1668,8 @@ static bool matchSimpleStridedLoadSCEV(LoadInst *LI,
   Out.StrideElems = StrideElems;
   Out.ConstElems = ConstElems;
   Out.ElemSizeBytes = ElemSize;
+  Out.VectorWidth = choose128BitVectorWidth(ElemTy, ElemSize);
+  Out.LayoutAware = false;
 
   outs() << "[SCEV strided match] ";
   LI->printAsOperand(outs(), false);
@@ -1657,7 +1733,81 @@ static bool matchSimpleStridedLoad(LoadInst *LI,
   Out.StrideElems = StrideElems;
   Out.ConstElems = ConstElems;
   Out.ElemSizeBytes = ElemSize;
+  Out.VectorWidth = choose128BitVectorWidth(ElemTy, ElemSize);
+  Out.LayoutAware = true;
   return true;
+}
+
+static bool matchYangStridedLoad(LoadInst *LI,
+                                 const DataLayout &DL,
+                                 ScalarEvolution &SE,
+                                 const SCEV *TidXS,
+                                 const SCEV *TidYS,
+                                 StridedLoadMatch &Out)
+{
+  // Prefer the Yang-style SCEV decomposition when the GEP is simple.
+  if (matchSimpleStridedLoadSCEV(LI, DL, SE, TidXS, TidYS, Out))
+    return true;
+
+  // Fallback: use recursive byte-offset affine decomposition. This accepts
+  // lowered 2D/multi-index GEPs such as A[row * pitch + col] when the final
+  // byte expression is still affine in tid_x and has no unknown symbolic term.
+  if (matchSimpleStridedLoad(LI, DL, Out))
+  {
+    outs() << "[layout-aware strided match] ";
+    LI->printAsOperand(outs(), false);
+    outs() << " stride_elems=" << Out.StrideElems
+           << " const_elems=" << Out.ConstElems
+           << " vector_width=" << Out.VectorWidth
+           << "\n";
+    return true;
+  }
+
+  return false;
+}
+
+static unsigned countCompatibleStridedLoads(ArrayRef<LoadInst *> Loads,
+                                            const StridedLoadMatch &Target,
+                                            const DataLayout &DL,
+                                            ScalarEvolution &SE,
+                                            const SCEV *TidXS,
+                                            const SCEV *TidYS)
+{
+  unsigned Count = 0;
+
+  for (LoadInst *OtherLI : Loads)
+  {
+    if (!OtherLI || !OtherLI->getParent())
+      continue;
+
+    StridedLoadMatch Other;
+    if (!matchYangStridedLoad(OtherLI, DL, SE, TidXS, TidYS, Other))
+      continue;
+
+    if (Other.BasePtr == Target.BasePtr &&
+        Other.StrideElems == Target.StrideElems &&
+        Other.ConstElems == Target.ConstElems &&
+        Other.ElemTy == Target.ElemTy)
+    {
+      ++Count;
+    }
+  }
+
+  return Count;
+}
+
+static bool isProfitableTileRemap(ArrayRef<LoadInst *> Loads,
+                                  const StridedLoadMatch &Match,
+                                  const DataLayout &DL,
+                                  ScalarEvolution &SE,
+                                  const SCEV *TidXS,
+                                  const SCEV *TidYS)
+{
+  // For a single-use gather such as A[4 * tid], cooperative tile-remap loads
+  // roughly the whole dense span, adds a barrier, and then reads from local
+  // memory. That is usually slower than the hardware's cached strided load.
+  // Require reuse of the same tile before paying that cost.
+  return countCompatibleStridedLoads(Loads, Match, DL, SE, TidXS, TidYS) >= 2;
 }
 struct CoalescedStoreMatch
 {
@@ -1759,7 +1909,7 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
         if (auto *LI = dyn_cast<LoadInst>(&I))
         {
           StridedLoadMatch Match;
-          if (matchSimpleStridedLoadSCEV(LI, DL, SE, TidXS, TidYS, Match))
+          if (matchYangStridedLoad(LI, DL, SE, TidXS, TidYS, Match))
             CandidateLoads.push_back(LI);
         }
       }
@@ -1788,8 +1938,18 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
         continue;
 
       StridedLoadMatch Match;
-      if (!matchSimpleStridedLoadSCEV(LI, DL, SE, TidXS, TidYS, Match))
+      if (!matchYangStridedLoad(LI, DL, SE, TidXS, TidYS, Match))
         continue;
+
+      if (!isProfitableTileRemap(CandidateLoads, Match, DL, SE, TidXS, TidYS))
+      {
+        outs() << "[TileRemapPass] skip unprofitable single-use strided load in function="
+               << F.getName()
+               << " stride_elems=" << Match.StrideElems
+               << " const_elems=" << Match.ConstElems
+               << "\n";
+        continue;
+      }
 
       BasicBlock *OrigBB = LI->getParent();
       BasicBlock *ContBB = OrigBB->splitBasicBlock(LI, "tile.cont");
@@ -1825,7 +1985,9 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           ConstC,
           "dense.base");
 
-      // Runtime valid span for preload/read.
+      // Runtime valid span for preload/read. The logical tile must cover the
+      // original strided element for every lane in the workgroup:
+      //   logical_index(lane) = lane * stride_elems.
       Value *ValidTileElems = BOrig.CreateAdd(
           BOrig.CreateMul(
               StrideC,
@@ -1836,85 +1998,139 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
           ConstantInt::get(BOrig.getInt64Ty(), 1),
           "valid.tile.elems");
 
-      // Fixed allocation size in entry block.
-      Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), 128);
+      // Fixed allocation size in entry block for the benchmark's default
+      // 256-thread workgroup. The logical tile covers lane * stride, so a
+      // stride-4 access needs 1021 elements, not 256. Account for the bank
+      // padding applied by addSharedBankPadding() as well.
+      constexpr uint64_t AssumedMaxLocalSize = 256;
+      uint64_t LogicalTileElems =
+          static_cast<uint64_t>(Match.StrideElems) *
+              (AssumedMaxLocalSize - 1) +
+          1;
+      uint64_t PaddedTileElems =
+          computePaddedTileElems(LogicalTileElems,
+                                 Match.SharedPadEvery,
+                                 Match.SharedPadElems);
+      Value *TileElems = ConstantInt::get(BOrig.getInt64Ty(), PaddedTileElems);
 
       Instruction *InsertPt = &*F.getEntryBlock().getFirstInsertionPt();
       AllocaInst *Tile = new AllocaInst(
           Match.ElemTy,
           3,
           TileElems,
-          Align(4),
+          Align(16),
           "tile.local",
           InsertPt);
 
-      // // Branch to preload loop.
-      // BOrig.CreateBr(HeaderBB);
+      unsigned VecWidth = Match.VectorWidth;
+      Value *VecWidthV = ConstantInt::get(BOrig.getInt64Ty(), VecWidth);
+      Value *InitialOff = BOrig.CreateMul(Lid0, VecWidthV, "off.init.vec");
+      Value *StepOff = BOrig.CreateMul(LSize0, VecWidthV, "off.step.vec");
+
+      // Partition-camping mitigation cannot be applied as a blind offset without
+      // changing program semantics unless the global layout has matching padding.
+      // We still materialize group_id(0) here so a later layout-aware mode can
+      // derive a legal per-block skew when padded allocations are known.
+      (void)createGetGroupId0(BOrig, *M);
+
       BOrig.CreateBr(HeaderBB);
 
-      // Preload header: for (off = lid; off < validTileElems; off += lsize)
+      // Preload header:
+      //   for (off = lid * vec_width; off < validTileElems;
+      //        off += local_size * vec_width)
       IRBuilder<> BHeader(HeaderBB);
       PHINode *OffPhi = BHeader.CreatePHI(BHeader.getInt64Ty(), 2, "off");
-      OffPhi->addIncoming(Lid0, OrigBB);
+      OffPhi->addIncoming(InitialOff, OrigBB);
       Value *Cond = BHeader.CreateICmpULT(OffPhi, ValidTileElems, "tile.cond");
       BHeader.CreateCondBr(Cond, BodyBB, ExitBB);
 
-      // Preload body.
+      // Preload body. Fast path uses a 128-bit vector global load/store when
+      // the whole vector is within both the global bound and the logical tile.
+      BasicBlock *VecBB = BasicBlock::Create(Ctx, "tile.preload.vec", &F, ExitBB);
+      BasicBlock *ScalarBB = BasicBlock::Create(Ctx, "tile.preload.scalar", &F, ExitBB);
+      BasicBlock *LatchBB = BasicBlock::Create(Ctx, "tile.preload.latch", &F, ExitBB);
+
       IRBuilder<> BBody(BodyBB);
       Value *GlobalIdx = BBody.CreateAdd(DenseBase, OffPhi, "global.idx");
-      Value *GlobalPtr = BBody.CreateGEP(Match.ElemTy, Match.BasePtr,
-                                         GlobalIdx, "global.ptr");
-      // LoadInst *Loaded = BBody.CreateLoad(Match.ElemTy, GlobalPtr, "tile.ld");
       Value *Bound64 = BBody.CreateSExtOrTrunc(BoundArg, BBody.getInt64Ty(), "bound64");
+      Value *VecEndGlobal = BBody.CreateAdd(GlobalIdx, VecWidthV, "vec.end.global");
+      Value *VecEndTile = BBody.CreateAdd(OffPhi, VecWidthV, "vec.end.tile");
+      Value *FullGlobalInBounds = BBody.CreateICmpULE(VecEndGlobal, Bound64, "vec.global.in.bounds");
+      Value *FullTileInBounds = BBody.CreateICmpULE(VecEndTile, ValidTileElems, "vec.tile.in.bounds");
+      Value *CanVectorize = BBody.CreateAnd(FullGlobalInBounds, FullTileInBounds, "can.vectorize.preload");
+      BBody.CreateCondBr(CanVectorize, VecBB, ScalarBB);
 
-      Value *InBounds = BBody.CreateICmpULT(GlobalIdx, Bound64, "global.in.bounds");
+      IRBuilder<> BVec(VecBB);
+      Type *VecTy = FixedVectorType::get(Match.ElemTy, VecWidth);
+      Value *VecGlobalPtr = BVec.CreateGEP(Match.ElemTy, Match.BasePtr, GlobalIdx, "vec.global.ptr");
+      LoadInst *VecLoad = BVec.CreateLoad(VecTy, VecGlobalPtr, "tile.vec.ld");
+      Value *VecPhysicalIdx = addSharedBankPadding(BVec, OffPhi,
+                                                   Match.SharedPadEvery,
+                                                   Match.SharedPadElems);
+      Value *VecTilePtr = BVec.CreateGEP(Match.ElemTy, Tile, VecPhysicalIdx, "vec.tile.ptr");
+      StoreInst *VecStore = BVec.CreateStore(VecLoad, VecTilePtr);
+      BVec.CreateBr(LatchBB);
 
-      Value *ZeroIdx = ConstantInt::get(BBody.getInt64Ty(), 0);
-      Value *SafeIdx = BBody.CreateSelect(InBounds, GlobalIdx, ZeroIdx, "safe.idx");
+      IRBuilder<> BScalar(ScalarBB);
+      Value *ZeroIdx = ConstantInt::get(BScalar.getInt64Ty(), 0);
+      Value *ZeroVal = Constant::getNullValue(Match.ElemTy);
+      for (unsigned Lane = 0; Lane < VecWidth; ++Lane)
+      {
+        Value *LaneOff = OffPhi;
+        if (Lane != 0)
+          LaneOff = BScalar.CreateAdd(OffPhi,
+                                      ConstantInt::get(BScalar.getInt64Ty(), Lane),
+                                      "lane.off");
+        Value *LaneGlobalIdx = BScalar.CreateAdd(DenseBase, LaneOff, "lane.global.idx");
+        Value *LaneInTile = BScalar.CreateICmpULT(LaneOff, ValidTileElems, "lane.in.tile");
+        Value *LaneInGlobal = BScalar.CreateICmpULT(LaneGlobalIdx, Bound64, "lane.in.global");
+        Value *LaneInBounds = BScalar.CreateAnd(LaneInTile, LaneInGlobal, "lane.in.bounds");
+        Value *SafeGlobalIdx = BScalar.CreateSelect(LaneInBounds, LaneGlobalIdx, ZeroIdx, "lane.safe.global.idx");
+        Value *SafeGlobalPtr = BScalar.CreateGEP(Match.ElemTy, Match.BasePtr, SafeGlobalIdx, "lane.safe.global.ptr");
+        LoadInst *RawLoad = BScalar.CreateLoad(Match.ElemTy, SafeGlobalPtr, "tile.scalar.ld.raw");
+        Value *Loaded = BScalar.CreateSelect(LaneInBounds, RawLoad, ZeroVal, "tile.scalar.ld");
+        Value *PhysicalLaneOff = addSharedBankPadding(BScalar, LaneOff,
+                                                      Match.SharedPadEvery,
+                                                      Match.SharedPadElems);
+        Value *TilePtr = BScalar.CreateGEP(Match.ElemTy, Tile, PhysicalLaneOff, "tile.scalar.ptr");
+        BScalar.CreateStore(Loaded, TilePtr);
+      }
+      BScalar.CreateBr(LatchBB);
 
-      Value *SafePtr = BBody.CreateGEP(Match.ElemTy, Match.BasePtr, SafeIdx, "safe.ptr");
-
-      LoadInst *RawLoad = BBody.CreateLoad(Match.ElemTy, SafePtr, "tile.ld.raw");
-
-      Value *ZeroVal = ConstantFP::get(Match.ElemTy, 0.0);
-
-      Value *Loaded = BBody.CreateSelect(InBounds, RawLoad, ZeroVal, "tile.ld");
-
-      Value *TilePtr = BBody.CreateGEP(
-          Match.ElemTy,
-          Tile,
-          OffPhi,
-          "tile.ptr");
-      BBody.CreateStore(Loaded, TilePtr);
-
-      Value *NextOff = BBody.CreateAdd(OffPhi, LSize0, "off.next");
-      BBody.CreateBr(HeaderBB);
-      OffPhi->addIncoming(NextOff, BodyBB);
+      IRBuilder<> BLatch(LatchBB);
+      Value *NextOff = BLatch.CreateAdd(OffPhi, StepOff, "off.next");
+      BLatch.CreateBr(HeaderBB);
+      OffPhi->addIncoming(NextOff, LatchBB);
 
       // Exit from preload.
       IRBuilder<> BExit(ExitBB);
       createBarrier(BExit, *M);
       BExit.CreateBr(ContBB);
 
-      // Compute block: load from shared tile, stage output in OutTile.
+      // Compute block: load from shared tile using the original strided logical
+      // index, remapped through the padded physical tile layout.
       IRBuilder<> BCont(&*ContBB->getFirstInsertionPt());
 
-      Value *SharedIdx = BCont.CreateMul(
+      Value *SharedLogicalIdx = BCont.CreateMul(
           Lid0,
           ConstantInt::get(BCont.getInt64Ty(), Match.StrideElems),
-          "shared.idx");
+          "shared.logical.idx");
 
       Value *SharedInBounds =
-          BCont.CreateICmpULT(SharedIdx, ValidTileElems, "shared.in.bounds");
+          BCont.CreateICmpULT(SharedLogicalIdx, ValidTileElems, "shared.in.bounds");
 
-      Value *SafeIdx = BCont.CreateSelect(
+      Value *SharedSafeLogicalIdx = BCont.CreateSelect(
           SharedInBounds,
-          SharedIdx,
+          SharedLogicalIdx,
           ConstantInt::get(BCont.getInt64Ty(), 0),
-          "shared.safe.idx");
+          "shared.safe.logical.idx");
+
+      Value *SharedPhysicalIdx = addSharedBankPadding(BCont, SharedSafeLogicalIdx,
+                                                      Match.SharedPadEvery,
+                                                      Match.SharedPadElems);
 
       Value *SharedPtr =
-          BCont.CreateGEP(Match.ElemTy, Tile, SafeIdx, "shared.ptr");
+          BCont.CreateGEP(Match.ElemTy, Tile, SharedPhysicalIdx, "shared.ptr");
 
       LoadInst *SharedLoad =
           BCont.CreateLoad(Match.ElemTy, SharedPtr, "shared.load");
@@ -1939,10 +2155,8 @@ struct TileRemapPass : public PassInfoMixin<TileRemapPass>
 
 struct CoalescingPass : public PassInfoMixin<CoalescingPass>
 {
-  // PreservedAnalyses run(Function &F, FunctionAnalysisManager &)
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM)
   {
-
     errs() << "ENTER run: " << F.getName() << "\n";
 
     if (shouldSkipFunction(F))
@@ -1981,28 +2195,28 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
         uint64_t AccessSizeBytes = 0;
         std::string Kind;
 
-        if (auto *LI = dyn_cast<LoadInst>(&I))
+        if (auto *Load = dyn_cast<LoadInst>(&I))
         {
-          Ptr = LI->getPointerOperand();
+          Ptr = Load->getPointerOperand();
           GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
           if (!GEP)
             continue;
 
-          AccessSizeBytes = getTypeSizeInBytes(DL, LI->getType());
+          AccessSizeBytes = getTypeSizeInBytes(DL, Load->getType());
           if (AccessSizeBytes == 0)
             continue;
 
           Kind = "load";
         }
-        else if (auto *SI = dyn_cast<StoreInst>(&I))
+        else if (auto *Store = dyn_cast<StoreInst>(&I))
         {
-          Ptr = SI->getPointerOperand();
+          Ptr = Store->getPointerOperand();
           GEP = dyn_cast<GetElementPtrInst>(stripSimpleCasts(Ptr));
           if (!GEP)
             continue;
 
           AccessSizeBytes =
-              getTypeSizeInBytes(DL, SI->getValueOperand()->getType());
+              getTypeSizeInBytes(DL, Store->getValueOperand()->getType());
           if (AccessSizeBytes == 0)
             continue;
 
@@ -2013,7 +2227,6 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
           continue;
         }
 
-        // Optional debugging
         outs() << "    RAW PTR: ";
         Ptr->printAsOperand(outs(), false);
         outs() << "\n";
@@ -2029,76 +2242,74 @@ struct CoalescingPass : public PassInfoMixin<CoalescingPass>
         const SCEV *PtrBaseS = SE.getPointerBase(PtrS);
         outs() << "    PTR BASE SCEV: " << *PtrBaseS << "\n";
 
-        if (GEP)
+        outs() << "    GEP PTR OPERAND: ";
+        GEP->getPointerOperand()->printAsOperand(outs(), false);
+        outs() << "\n";
+
+        outs() << "    GEP INDICES:\n";
+        unsigned IdxNo = 0;
+        for (Value *Idx : GEP->indices())
         {
-          outs() << "    GEP PTR OPERAND: ";
-          GEP->getPointerOperand()->printAsOperand(outs(), false);
+          outs() << "      idx" << IdxNo++ << "=";
+          Idx->printAsOperand(outs(), false);
           outs() << "\n";
 
-          outs() << "    GEP INDICES:\n";
-          unsigned IdxNo = 0;
-          for (Value *Idx : GEP->indices())
-          {
-
-            outs() << "      idx" << IdxNo++ << "=";
-            Idx->printAsOperand(outs(), false);
-            outs() << "\n";
-
-            dumpSCEVInfoForIndex(SE, TidXS, TidYS, Idx);
-            outs().flush();
-            // outs() << "      idx" << IdxNo++ << "=";
-            // Idx->printAsOperand(outs(), false);
-
-            // // AffineExpr IdxExpr = parseAffine(Idx);
-            // outs() << " affine=" << formatAffineExpr(IdxExpr);
-
-            // ThreadVarKind TV = getThreadVarKind(Idx);
-            // if (TV == ThreadVarKind::TidX)
-            //   outs() << " kind=tid_x";
-            // else if (TV == ThreadVarKind::TidY)
-            //   outs() << " kind=tid_y";
-            // else
-            //   outs() << " kind=" << affineThreadKindName(IdxExpr);
-
-            // int64_t C = 0;
-            // if (getConstInt(Idx, C))
-            //   outs() << " const=" << C;
-
-            // outs() << "\n";
-
-            // dumpIndexDef(Idx);
-          }
+          dumpSCEVInfoForIndex(SE, TidXS, TidYS, Idx);
+          outs().flush();
         }
 
-        // AffineExpr ByteExpr = buildByteOffsetExprRecursive(Ptr, DL);
-        // WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
-        // std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
+        // IMPORTANT:
+        // Do not call buildByteOffsetExprRecursive() here.
+        // It can hang on Clang-generated OpenCL wrapper IR.
+        // Instead, use SCEV, which already recognizes tid_x coefficients.
+        AffineExpr ByteExpr = invalidExpr();
 
-        // AccessInfo AI;
-        // AI.Kind = Kind;
-        // AI.BaseValueStr = valueToString(Ptr);
-        // AI.BaseName = getBaseName(Ptr);
-        // // AI.OffsetStr = formatAffineExpr(ByteExpr);
-        // // AI.ThreadDependent = ByteExpr.dependsOnThreads();
-        // // AI.StrideXBytes = computeStrideXBytes(ByteExpr);
-        // AI.AccessSize = AccessSizeBytes;
-        // AI.Exact = WI.Exact;
-        // AI.Contiguous = WI.Contiguous;
-        // AI.Monotonic = WI.Monotonic;
-        // AI.Broadcast = WI.Broadcast;
-        // AI.ClassName = ClassName;
-        // AI.Suggestion = suggestOptimization(AI);
+        SCEVGEPIndexInfo GI;
+        if (summarizeSimpleGEPIndex(GEP, SE, TidXS, TidYS, GI) &&
+            GI.Known &&
+            !GI.HasOtherSymbolic &&
+            !GI.HasLoopRecurrence)
+        {
+          ByteExpr.Known = true;
+          ByteExpr.HasUnknownInvariant = false;
+          ByteExpr.CoeffTidX =
+              GI.CoeffTidX * static_cast<int64_t>(AccessSizeBytes);
+          ByteExpr.CoeffTidY =
+              GI.CoeffTidY * static_cast<int64_t>(AccessSizeBytes);
+          ByteExpr.Constant =
+              GI.ConstantElems * static_cast<int64_t>(AccessSizeBytes);
+        }
 
-        // AI.Action = chooseTransform(AI);
-        // AI.ActionReason = explainTransformChoice(AI);
+        WarpAccessInfo WI = analyzeWarp(ByteExpr, AccessSizeBytes);
+        std::string ClassName = classifyAccess(ByteExpr, AccessSizeBytes, WI);
 
-        // Accesses.push_back(std::move(AI));
+        AccessInfo AI;
+        AI.Kind = Kind;
+        AI.BaseValueStr = valueToString(Ptr);
+        AI.BaseName = getBaseName(Ptr);
+        AI.OffsetStr = formatAffineExpr(ByteExpr);
+        AI.ThreadDependent = ByteExpr.dependsOnThreads();
+        AI.StrideXBytes = computeStrideXBytes(ByteExpr);
+        AI.AccessSize = AccessSizeBytes;
+        AI.Exact = WI.Exact;
+        AI.Contiguous = WI.Contiguous;
+        AI.Monotonic = WI.Monotonic;
+        AI.Broadcast = WI.Broadcast;
+        AI.ClassName = ClassName;
+        AI.Suggestion = suggestOptimization(AI);
+        AI.Action = chooseTransform(AI);
+        AI.ActionReason = explainTransformChoice(AI);
+
+        Accesses.push_back(std::move(AI));
       }
     }
 
     outs() << "[CoalescingPass] function=" << F.getName() << "\n";
 
-    unsigned KeepCount = 0, BroadcastCount = 0, TileCount = 0, SkipCount = 0;
+    unsigned KeepCount = 0;
+    unsigned BroadcastCount = 0;
+    unsigned TileCount = 0;
+    unsigned SkipCount = 0;
 
     for (const auto &AI : Accesses)
     {

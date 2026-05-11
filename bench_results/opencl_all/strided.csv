@@ -1,0 +1,2 @@
+N,benchmark,correct,kernel_name,local_size,max_abs_err,optimized_best_ms,optimized_file,optimized_median_ms,original_best_ms,original_file,original_median_ms,speedup_best,speedup_median
+65536,strided,True,test,256,0.0,0.005088,kernels_opt/strided.cl,0.0051199999999999996,0.004896,kernels/strided.cl,0.005791999999999999,0.9622641509433963,1.13125
