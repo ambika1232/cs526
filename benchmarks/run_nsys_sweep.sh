@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-SM="${1:-sm_75}"
+SM="${1:-sm_80}"
 PTX_DIR="${2:-../build/bench}"
 shift 2 2>/dev/null || shift $# 2>/dev/null || true
 

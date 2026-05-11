@@ -154,7 +154,7 @@ out_compute = base_out + "_compute.png"
 
 # ── memory-bound plot ─────────────────────────────────────────────────────────
 fig1, ax1 = plt.subplots(figsize=(14, 6))
-fig1.suptitle("Memory-bound kernels: base vs hint vs pipeline  (N=4096, sm_75)\n"
+fig1.suptitle("Memory-bound kernels: base vs hint vs pipeline  (N=4096, sm_80)\n"
               "Normalized to baseline — pipeline_bench N=32768",
               fontsize=12, fontweight="bold")
 plot_group(ax1, fast_entries,
@@ -165,7 +165,7 @@ print(f"Saved: {out_memory}")
 
 # ── compute-bound plot ────────────────────────────────────────────────────────
 fig2, ax2 = plt.subplots(figsize=(14, 6))
-fig2.suptitle("Compute-bound kernels: base vs hint vs pipeline  (N=4096, sm_75)\n"
+fig2.suptitle("Compute-bound kernels: base vs hint vs pipeline  (N=4096, sm_80)\n"
               "Normalized to baseline",
               fontsize=12, fontweight="bold")
 plot_group(ax2, slow_entries,

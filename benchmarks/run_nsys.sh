@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-SM="${1:-sm_75}"
+SM="${1:-sm_80}"
 PTX_DIR="${2:-../build/bench}"
 N="${3:-4096}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
