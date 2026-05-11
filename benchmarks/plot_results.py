@@ -16,6 +16,8 @@ parser.add_argument("reports_dir", nargs="?", default="reports",
                     help="directory containing .nsys-rep files")
 parser.add_argument("--out", default="results.png",
                     help="output PNG path")
+parser.add_argument("--N", type=int, default=4096,
+                    help="only include reports with this N value (default: 4096)")
 args = parser.parse_args()
 
 REPORTS_DIR = args.reports_dir
@@ -26,13 +28,16 @@ if not os.path.isdir(REPORTS_DIR):
 # data[benchmark][sub_kernel][variant] = avg_ms
 data = {}
 
-pat = re.compile(r"report_(.+?)_(base|hint|pipeline)(?:_N\d+)?\.nsys-rep$")
+pat = re.compile(r"report_(.+?)_(base|hint|pipeline)(?:_N(\d+))?\.nsys-rep$")
 
 for fname in sorted(os.listdir(REPORTS_DIR)):
     m = pat.match(fname)
     if not m:
         continue
     bench, variant = m.group(1), m.group(2)
+    file_n = int(m.group(3)) if m.group(3) else None
+    if args.N is not None and file_n != args.N and bench != "pipeline_bench":
+        continue
     fpath = os.path.join(REPORTS_DIR, fname)
 
     try:
@@ -98,8 +103,8 @@ def make_labels(entries):
         labels.append(f"{bench}\n{short}" if short != kname else bench)
     return labels
 
-# ── plotting function ─────────────────────────────────────────────────────────
-def plot_group(ax, entries, title, ylabel):
+# ── plotting function (normalized to baseline) ────────────────────────────────
+def plot_group(ax, entries, title):
     if not entries:
         ax.set_visible(False)
         return
@@ -111,27 +116,30 @@ def plot_group(ax, entries, title, ylabel):
     offsets = {"base": -w, "hint": 0, "pipeline": w}
 
     for variant, offset in offsets.items():
-        vals = []
+        norm_vals = []
+        base_vals = [data.get(b, {}).get(k, {}).get("base", 0) for b, k in entries]
         for bench, kname in entries:
-            vals.append(data.get(bench, {}).get(kname, {}).get(variant, 0))
-        bars = ax.bar(x + offset, vals, w, label=variant,
-                      color=COLORS[variant], edgecolor="white", linewidth=0.5)
+            bv = data.get(bench, {}).get(kname, {}).get("base", 0)
+            vv = data.get(bench, {}).get(kname, {}).get(variant, 0)
+            norm_vals.append(vv / bv if bv > 0 else 0)
 
-        # annotate with % change vs base
+        ax.bar(x + offset, norm_vals, w, label=variant,
+               color=COLORS[variant], edgecolor="white", linewidth=0.5)
+
+        # annotate hint/pipeline bars with % change
         if variant != "base":
-            base_vals = [data.get(b, {}).get(k, {}).get("base", 0)
-                         for b, k in entries]
-            for xi, (v, bv) in enumerate(zip(vals, base_vals)):
-                if bv > 0 and v > 0:
-                    pct = (v - bv) / bv * 100
+            for xi, (nv, bv) in enumerate(zip(norm_vals, base_vals)):
+                if nv > 0:
+                    pct = (nv - 1.0) * 100
                     color = "green" if pct < -1 else ("red" if pct > 1 else "gray")
-                    ax.text(xi + offset, v + max(vals) * 0.005,
+                    ax.text(xi + offset, nv + 0.008,
                             f"{pct:+.1f}%", ha="center", va="bottom",
                             fontsize=6, color=color, rotation=90)
 
+    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", alpha=0.5)
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel(ylabel)
+    ax.set_ylabel("Time normalized to baseline  (1.0 = base, lower = faster)")
     ax.set_title(title)
     ax.legend(handles=[
         mpatches.Patch(color=COLORS[v], label=v) for v in VARIANTS
@@ -139,22 +147,32 @@ def plot_group(ax, entries, title, ylabel):
     ax.yaxis.grid(True, linestyle="--", alpha=0.5)
     ax.set_axisbelow(True)
 
-# ── draw ──────────────────────────────────────────────────────────────────────
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 11))
-fig.suptitle("GPU Kernel Avg Time: base vs hint vs pipeline  (N=4096, sm_75)",
-             fontsize=13, fontweight="bold")
+# ── derive output paths from --out ────────────────────────────────────────────
+base_out = args.out.removesuffix(".png")
+out_memory  = base_out + "_memory.png"
+out_compute = base_out + "_compute.png"
 
-plot_group(ax1, slow_entries,
-           "Compute-heavy kernels (gemm, 2mm, 3mm, syrk, syr2k)",
-           "Avg time per kernel dispatch (ms)")
+# ── memory-bound plot ─────────────────────────────────────────────────────────
+fig1, ax1 = plt.subplots(figsize=(14, 6))
+fig1.suptitle("Memory-bound kernels: base vs hint vs pipeline  (N=4096, sm_75)\n"
+              "Normalized to baseline — pipeline_bench N=32768",
+              fontsize=12, fontweight="bold")
+plot_group(ax1, fast_entries,
+           "atax, bicg, mvt, gesummv, pipeline_bench")
+fig1.tight_layout()
+fig1.savefig(out_memory, dpi=150, bbox_inches="tight")
+print(f"Saved: {out_memory}")
 
-plot_group(ax2, fast_entries,
-           "Memory-bound kernels (atax, bicg, mvt, gesummv, pipeline_bench)",
-           "Avg time per kernel dispatch (ms)")
-
-plt.tight_layout()
-plt.savefig(args.out, dpi=150, bbox_inches="tight")
-print(f"Saved: {args.out}")
+# ── compute-bound plot ────────────────────────────────────────────────────────
+fig2, ax2 = plt.subplots(figsize=(14, 6))
+fig2.suptitle("Compute-bound kernels: base vs hint vs pipeline  (N=4096, sm_75)\n"
+              "Normalized to baseline",
+              fontsize=12, fontweight="bold")
+plot_group(ax2, slow_entries,
+           "gemm, 2mm, 3mm, syrk, syr2k")
+fig2.tight_layout()
+fig2.savefig(out_compute, dpi=150, bbox_inches="tight")
+print(f"Saved: {out_compute}")
 
 # ── print summary table ───────────────────────────────────────────────────────
 print(f"\n{'Benchmark':<25} {'Sub-kernel':<22} {'base (ms)':>10} {'hint (ms)':>10} {'hint Δ':>8} {'pipe (ms)':>10} {'pipe Δ':>8}")

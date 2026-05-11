@@ -79,7 +79,7 @@ if not data:
 if args.kernels:
     data = {k: v for k, v in data.items() if k in args.kernels}
 
-benches = sorted(data.keys())
+benches = sorted(b for b in data.keys() if b != "pipeline_bench")
 N_values_global = sorted({N for b in data.values() for N in b.keys()})
 
 VARIANTS = ["hint", "pipeline"]
@@ -108,11 +108,19 @@ for ax_idx, bench in enumerate(benches):
                          for n_data in bench_data.values()
                          for kn in n_data.keys()})
 
+    def shorten(kname):
+        short = kname
+        for prefix in [bench + "_", bench]:
+            if short.startswith(prefix):
+                return short[len(prefix):]
+        # prefix didn't match (e.g. bench="2mm", kname="mm2_kernel1")
+        # drop the first underscore-separated word
+        parts = kname.split("_", 1)
+        return parts[1] if len(parts) > 1 else kname
+
     plotted_anything = False
     for variant in VARIANTS:
-        # one line per sub-kernel × variant
-        kname_colors = cm.tab10(np.linspace(0, 0.5, len(all_knames)))
-        for ki, kname in enumerate(all_knames):
+        for kname in all_knames:
             xs, ys = [], []
             for N in sorted(bench_data.keys()):
                 kdata = bench_data[N].get(kname, {})
@@ -122,16 +130,11 @@ for ax_idx, bench in enumerate(benches):
                     xs.append(N)
                     ys.append((vv - bv) / bv * 100)
 
-            if not xs:
+            # need at least 2 points to draw a meaningful line
+            if len(xs) < 2:
                 continue
 
-            # label: skip sub-kernel suffix if it matches bench name
-            short = kname
-            for prefix in [bench + "_", bench]:
-                if short.startswith(prefix):
-                    short = short[len(prefix):]
-            label = f"{variant}  [{short}]" if short != kname else variant
-
+            label = f"{variant} [{shorten(kname)}]"
             ls = "-" if variant == "hint" else "--"
             ax.plot(xs, ys,
                     color=COLORS[variant],
